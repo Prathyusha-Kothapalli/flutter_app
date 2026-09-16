@@ -334,32 +334,6 @@ class QCTicketService {
     }
   }
 
-      // Verification log check 5 seconds post-assignment
-      if (assignedResults.length > 0) {
-        setTimeout(async () => {
-          try {
-            const checkIds = assignedResults.map(t => t.id);
-            const verifyRes = await db.query(
-              `SELECT id, ticket_code, status, assigned_reviewer_id, assigned_reviewer_name FROM qc_tickets WHERE id = ANY($1::uuid[])`,
-              [checkIds]
-            );
-            logger.info(`🔍 [DB State Verification +5s] Assigned Tickets Persistence Check:`, {
-              totalChecked: verifyRes.rowCount,
-              assignedQC: verifyRes.rows.filter(r => r.status === 'ASSIGNED_QC' && r.assigned_reviewer_id !== null).length,
-              sample: verifyRes.rows[0],
-            });
-          } catch (_) {}
-        }, 5000);
-      }
-
-      logger.info(`✓ Least Workload Algorithm Completed: Equally distributed ${assignedResults.length} tickets across active QC team.`);
-      return assignedResults;
-    } catch (err) {
-      logger.error('Error in distributeTicketsEqually', { error: err.message });
-      return [];
-    }
-  }
-
   /**
    * Auto Reassignment Routine for Inactive QC Reviewers (> 24h Inactivity)
    * Triggered by background scheduler every 15 minutes or via Admin trigger.

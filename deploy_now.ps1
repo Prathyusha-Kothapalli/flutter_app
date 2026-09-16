@@ -63,12 +63,12 @@ Write-Host "`n==> [4/6] Writing production .env on VPS..." -ForegroundColor Cyan
 $envFile = @"
 PORT=5000
 NODE_ENV=production
-DATABASE_URL=postgresql://neondb_owner:npg_FBwOPsI5L4fE@ep-young-leaf-axv340na-pooler.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require
-DB_HOST=ep-young-leaf-axv340na-pooler.c-4.us-east-2.aws.neon.tech
+DATABASE_URL=postgresql://neondb_owner:npg_mDwP3Vlr1XCe@ep-small-wildflower-b4kk195a-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+DB_HOST=ep-small-wildflower-b4kk195a-pooler.c-6.us-east-2.aws.neon.tech
 DB_PORT=5432
 DB_NAME=neondb
 DB_USER=neondb_owner
-DB_PASSWORD=npg_FBwOPsI5L4fE
+DB_PASSWORD=npg_mDwP3Vlr1XCe
 DB_SSL=true
 JWT_SECRET=super_secret_jwt_access_token_key_2026_video_platform
 JWT_REFRESH_SECRET=super_secret_jwt_refresh_token_key_2026_video_platform
