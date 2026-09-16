@@ -2,15 +2,16 @@
  * Fixed Migration Runner — properly handles DO $$ blocks and multi-statement SQL
  */
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, 'backend/.env') });
 const fs = require('fs');
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_mDwP3Vlr1XCe@ep-small-wildflower-b4kk195a-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgrespassword@localhost:5432/videoplatform';
 
 const { Pool } = require(path.join(__dirname, 'backend/node_modules/pg'));
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
 });
 
 // Splits SQL correctly, respecting $$ dollar-quote blocks and DO blocks

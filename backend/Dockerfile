@@ -15,6 +15,12 @@ RUN npm install --only=production
 # Copy application source code
 COPY . .
 
+# Create uploads directory and set permissions
+RUN mkdir -p /app/uploads/videos && chown -R node:node /app
+
+# Switch to non-root user
+USER node
+
 # Expose Node.js server port
 EXPOSE 5000
 

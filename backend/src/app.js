@@ -34,7 +34,20 @@ app.use(helmet({
 // SECURITY LAYER 3: CORS Configuration
 // ============================================================================
 app.use(cors({
-  origin: true, // Allow all origins for API endpoints to prevent mobile/web CORS blocking
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      'https://elevateiq-softtech.com',
+      'http://elevateiq-softtech.com',
+      'https://www.elevateiq-softtech.com',
+      'http://localhost:8081',
+      'http://localhost:3000',
+    ];
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'X-API-Key'],
   exposedHeaders: ['X-Request-Id', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],

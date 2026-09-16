@@ -1,10 +1,11 @@
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, 'backend/.env') });
 const bcrypt = require(path.join(__dirname, 'backend/node_modules/bcryptjs'));
 const { Pool } = require(path.join(__dirname, 'backend/node_modules/pg'));
 
 const pool = new Pool({
-  connectionString: 'postgresql://neondb_owner:npg_mDwP3Vlr1XCe@ep-small-wildflower-b4kk195a-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require',
-  ssl: { rejectUnauthorized: false }
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgrespassword@localhost:5432/videoplatform',
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
 });
 
 async function fixAdminPasswords() {

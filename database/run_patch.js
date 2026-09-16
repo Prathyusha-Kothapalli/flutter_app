@@ -3,13 +3,14 @@
  * so each can fail independently without aborting the rest.
  */
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../backend/.env') });
 const { Pool } = require(path.join(__dirname, '../backend/node_modules/pg'));
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_mDwP3Vlr1XCe@ep-small-wildflower-b4kk195a-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgrespassword@localhost:5432/videoplatform';
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
 });
 
 const patches = [
