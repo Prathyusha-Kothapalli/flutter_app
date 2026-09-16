@@ -110,6 +110,30 @@ function validateVideoContent(filePath) {
       return { valid: false, error: 'Video exceeds maximum allowed duration (1 hour)' };
     }
 
+    // QUALITY REQUIREMENT: Must be at least 1080p (1920x1080)
+    const width = videoStream.width || 0;
+    const height = videoStream.height || 0;
+    if (width < 1920 || height < 1080) {
+      return {
+        valid: false,
+        error: `Video quality too low: ${width}x${height}. Minimum required is 1920x1080 (1080p)`,
+      };
+    }
+
+    // QUALITY REQUIREMENT: Must be at least 60fps
+    let fps = 0;
+    const rFrameRate = videoStream.r_frame_rate || '0/1';
+    const parts = rFrameRate.split('/');
+    if (parts.length === 2 && parseInt(parts[1]) > 0) {
+      fps = Math.round(parseInt(parts[0]) / parseInt(parts[1]));
+    }
+    if (fps < 60) {
+      return {
+        valid: false,
+        error: `Video frame rate too low: ${fps}fps. Minimum required is 60fps`,
+      };
+    }
+
     // Verify file size matches metadata
     const reportedSize = parseInt(probe.format?.size || '0');
     const actualSize = fs.statSync(filePath).size;
@@ -120,8 +144,9 @@ function validateVideoContent(filePath) {
     return {
       valid: true,
       duration: duration,
-      width: videoStream.width,
-      height: videoStream.height,
+      width: width,
+      height: height,
+      fps: fps,
       codec: videoStream.codec_name,
     };
   } catch (error) {

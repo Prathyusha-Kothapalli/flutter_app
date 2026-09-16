@@ -103,8 +103,9 @@ class _VideoRecordingScreenState extends State<VideoRecordingScreen> {
     final selectedCamera = CameraService.instance.defaultCamera!;
     _controller = CameraController(
       selectedCamera,
-      ResolutionPreset.medium,
+      ResolutionPreset.max,
       enableAudio: true,
+      imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
     try {
@@ -629,8 +630,21 @@ class _VideoRecordingScreenState extends State<VideoRecordingScreen> {
         scrolledUnderElevation: 0.5,
         title: const Text('Record Video Data', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: const Color(0xFFE2E8F0), height: 1.0),
+          preferredSize: const Size.fromHeight(30.0),
+          child: Container(
+            color: const Color(0xFFEFF6FF),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, size: 14, color: Color(0xFF2563EB)),
+                SizedBox(width: 6),
+                Text(
+                  'Required: 1080p (1920x1080) • 60fps • MP4 format',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF2563EB), fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
       body: SafeArea(
