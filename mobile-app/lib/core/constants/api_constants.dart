@@ -12,6 +12,15 @@ class ApiConstants {
 
   static String? _customBaseUrl;
 
+  static String? get customServerUrl => _customBaseUrl;
+  static set customServerUrl(String? val) {
+    if (val != null && val.isNotEmpty) {
+      setBaseUrl(val);
+    } else {
+      resetBaseUrl();
+    }
+  }
+
   /// Initialize and load any saved custom server URL
   static Future<void> init() async {
     try {
