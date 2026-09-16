@@ -11,7 +11,11 @@ import 'package:mobile_app/main.dart';
 
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+    // Build our app and trigger frames.
     await tester.pumpWidget(const VideoPlatformApp());
+    await tester.pump(const Duration(milliseconds: 1600));
+    expect(find.textContaining('Video Data'), findsOneWidget);
   });
 }
+
+
