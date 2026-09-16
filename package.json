@@ -6,7 +6,8 @@
   "scripts": {
     "install:all": "npm install && npm --prefix backend install",
     "dev:backend": "npm --prefix backend run dev",
-    "dev": "npm --prefix backend run dev",
+    "dev:frontend": "node scripts/serve-frontend.js",
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"cyan,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "start": "npm run dev"
   },
   "devDependencies": {

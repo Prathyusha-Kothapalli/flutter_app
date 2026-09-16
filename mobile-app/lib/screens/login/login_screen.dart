@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../config/routes/app_routes.dart';
+import '../../core/constants/api_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/powered_by_footer.dart';
@@ -124,6 +125,87 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  void _showServerSettingsDialog() {
+    final serverController = TextEditingController(text: ApiConstants.baseUrl);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.dns_rounded, color: Color(0xFF3B82F6)),
+            SizedBox(width: 8),
+            Text('Server Settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Specify backend REST API URL connected to your PostgreSQL database:',
+              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: serverController,
+              decoration: InputDecoration(
+                labelText: 'Backend URL',
+                hintText: 'http://192.168.1.87:5000',
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                ActionChip(
+                  label: const Text('Local PC (Wi-Fi)', style: TextStyle(fontSize: 12)),
+                  onPressed: () => serverController.text = 'http://192.168.1.87:5000',
+                ),
+                ActionChip(
+                  label: const Text('Cloud VPS', style: TextStyle(fontSize: 12)),
+                  onPressed: () => serverController.text = 'https://elevateiq-softtech.com/video-platform-api',
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newUrl = serverController.text.trim();
+              if (newUrl.isNotEmpty) {
+                setState(() {
+                  ApiConstants.customServerUrl = newUrl;
+                });
+              }
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Server endpoint set to: ${ApiConstants.baseUrl}'),
+                  backgroundColor: const Color(0xFF16A34A),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Save Server', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -136,6 +218,16 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Server Config Icon Button
+                Align(
+                  alignment: Alignment.topRight,
+                  child: IconButton(
+                    icon: const Icon(Icons.settings_outlined, color: Color(0xFF94A3B8), size: 22),
+                    tooltip: 'Backend Server Settings',
+                    onPressed: _showServerSettingsDialog,
+                  ),
+                ),
+
                 // Blue Video Camera Icon Badge
                 Center(
                   child: Container(

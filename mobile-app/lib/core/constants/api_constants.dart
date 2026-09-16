@@ -4,11 +4,17 @@ class ApiConstants {
   // Prevent instantiation
   ApiConstants._();
 
+  /// Customizable server URL for mobile APK devices
+  static String? customServerUrl;
+
+  /// Default local machine Wi-Fi IP where Node.js & Neon PostgreSQL backend runs
+  static const String defaultLocalIp = 'http://192.168.1.87:5000';
+  static const String defaultVpsUrl = 'https://elevateiq-softtech.com/video-platform-api';
+
   /// Base URL for backend server
-  /// Handles localhost for Web/Desktop/iOS vs 10.0.2.2 for Android Emulator
   static String get baseUrl {
-    if (kReleaseMode || !kDebugMode) {
-      return 'https://elevateiq-softtech.com/video-platform-api';
+    if (customServerUrl != null && customServerUrl!.trim().isNotEmpty) {
+      return customServerUrl!.trim().replaceAll(RegExp(r'/+$'), '');
     }
     if (kIsWeb) {
       final host = Uri.base.host.isNotEmpty ? Uri.base.host : 'localhost';
@@ -18,8 +24,8 @@ class ApiConstants {
       }
       return 'http://$host:5000';
     }
-    // Default fallback to live production VPS server
-    return 'https://elevateiq-softtech.com/video-platform-api';
+    // On physical mobile devices (APK), connect directly to local backend server
+    return defaultLocalIp;
   }
 
   static const String apiVersion = '/api/v1';
