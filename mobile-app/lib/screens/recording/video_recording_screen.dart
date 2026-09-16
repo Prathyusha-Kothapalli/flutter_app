@@ -639,7 +639,7 @@ class _VideoRecordingScreenState extends State<VideoRecordingScreen> {
                 Icon(Icons.info_outline, size: 14, color: Color(0xFF2563EB)),
                 SizedBox(width: 6),
                 Text(
-                  'Required: 1080p (1920x1080) • 60fps • MP4 format',
+                  'Required: 1080p (1920x1080) • 30/60fps • MP4 format',
                   style: TextStyle(fontSize: 11, color: Color(0xFF2563EB), fontWeight: FontWeight.w600),
                 ),
               ],

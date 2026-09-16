@@ -120,17 +120,17 @@ function validateVideoContent(filePath) {
       };
     }
 
-    // QUALITY REQUIREMENT: Must be at least 60fps
+    // QUALITY REQUIREMENT: Must be at least 30fps
     let fps = 0;
     const rFrameRate = videoStream.r_frame_rate || '0/1';
     const parts = rFrameRate.split('/');
     if (parts.length === 2 && parseInt(parts[1]) > 0) {
       fps = Math.round(parseInt(parts[0]) / parseInt(parts[1]));
     }
-    if (fps < 60) {
+    if (fps < 30) {
       return {
         valid: false,
-        error: `Video frame rate too low: ${fps}fps. Minimum required is 60fps`,
+        error: `Video frame rate too low: ${fps}fps. Minimum required is 30fps`,
       };
     }
 
