@@ -103,7 +103,7 @@ class _VideoRecordingScreenState extends State<VideoRecordingScreen> {
     final selectedCamera = CameraService.instance.defaultCamera!;
     _controller = CameraController(
       selectedCamera,
-      ResolutionPreset.high,
+      ResolutionPreset.medium,
       enableAudio: true,
     );
 
@@ -434,25 +434,89 @@ class _VideoRecordingScreenState extends State<VideoRecordingScreen> {
   }
 
   Future<void> _uploadVideoNow(XFile file, int fileSize, Position? pos) async {
-    if (mounted) {
-      setState(() {
-        _isFetchingLocation = true;
-      });
-    }
+    double uploadProgress = 0.05;
+    StateSetter? dialogSetState;
 
-    final compResult = await CompressionService.instance.compressVideo(
-      inputPath: file.path,
-      quality: CompressionQuality.medium,
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          dialogSetState = setModalState;
+          final percentInt = (uploadProgress * 100).toInt();
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: const [
+                Icon(Icons.cloud_upload_rounded, color: Color(0xFF2563EB), size: 28),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text('Uploading Video...', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Environment: ${_selectedEnvironmentTag ?? "Kitchen"} • ${_formatDuration(_elapsedSeconds)}',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: uploadProgress,
+                    minHeight: 10,
+                    backgroundColor: const Color(0xFFE2E8F0),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('$percentInt% Uploaded', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2563EB))),
+                    Text(uploadProgress >= 0.98 ? 'Finalizing...' : 'Fast Streaming', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
 
     final deviceId = await DeviceService.instance.getDeviceId();
     final uploadRes = await UploadService.instance.uploadVideo(
-      filePath: compResult.outputPath,
+      filePath: file.path,
       environmentTag: _selectedEnvironmentTag,
       deviceId: deviceId,
       recordingDate: _recordingStartTime?.toIso8601String(),
       durationSeconds: _elapsedSeconds,
+      onProgress: (p) {
+        uploadProgress = p;
+        dialogSetState?.call(() {});
+      },
     );
+
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context); // Dismiss upload progress dialog
+    }
+
+    if (!uploadRes.isSuccess) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(uploadRes.message ?? 'Upload failed. Please check network connection.'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
 
     final finalVideoId = uploadRes.videoId ?? 'VID-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
@@ -470,7 +534,7 @@ class _VideoRecordingScreenState extends State<VideoRecordingScreen> {
       'env': _selectedEnvironmentTag ?? 'Kitchen',
       'status': 'Pending QC',
       'date': 'Today, Just Now',
-      'size': _formatFileSize(compResult.compressedSizeBytes),
+      'size': _formatFileSize(fileSize),
       'duration': _formatDuration(_elapsedSeconds),
       'durationSeconds': _elapsedSeconds,
       'candidate_id': currentUserId,
@@ -496,7 +560,7 @@ class _VideoRecordingScreenState extends State<VideoRecordingScreen> {
           'status': 'Pending',
           'env': _selectedEnvironmentTag ?? 'Kitchen',
           'time': 'Just Now',
-          'size': _formatFileSize(compResult.compressedSizeBytes),
+          'size': _formatFileSize(fileSize),
           'videoUrl': uploadRes.filePath ?? '',
           'rejectionReason': '',
         };
@@ -514,7 +578,7 @@ class _VideoRecordingScreenState extends State<VideoRecordingScreen> {
     if (mounted) {
       setState(() {
         _recordedFile = file;
-        _recordedFileSize = compResult.compressedSizeBytes;
+        _recordedFileSize = fileSize;
         _currentPosition = pos;
         _isFetchingLocation = false;
       });

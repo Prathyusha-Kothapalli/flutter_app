@@ -3,8 +3,11 @@ import 'config/routes/app_routes.dart';
 import 'core/constants/app_constants.dart';
 import 'core/theme/app_theme.dart';
 
-void main() {
+import 'core/constants/api_constants.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await ApiConstants.init();
   runApp(const VideoPlatformApp());
 }
 

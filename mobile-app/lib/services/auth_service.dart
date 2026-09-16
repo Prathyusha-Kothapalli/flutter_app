@@ -72,15 +72,21 @@ class AuthService extends ChangeNotifier {
         return {'success': true, 'role': role, 'data': envelope};
       }
 
-      // 2. Explicit authentication failure (HTTP 401/403)
+      // 2. Database validation failed (HTTP 401/403/404/500/etc.)
+      try {
+        final err = jsonDecode(response.body);
+        final msg = err['message'] ?? err['error'];
+        if (msg != null && msg.toString().isNotEmpty) {
+          return {'success': false, 'message': msg.toString()};
+        }
+      } catch (_) {}
+
       if (response.statusCode == 401 || response.statusCode == 403) {
-        try {
-          final err = jsonDecode(response.body);
-          final msg = err['message'] ?? err['error'];
-          if (msg != null && msg.toString().isNotEmpty) {
-            return {'success': false, 'message': msg.toString()};
-          }
-        } catch (_) {}
+        return {'success': false, 'message': 'Invalid email or password.'};
+      } else if (response.statusCode == 404) {
+        return {'success': false, 'message': 'API endpoint not found (404). Check server address in settings.'};
+      } else {
+        return {'success': false, 'message': 'Server error (${response.statusCode}). Please check server status.'};
       }
 
       // If server returned 404, 500, 502, or other non-200, proceed to seamless fallback below

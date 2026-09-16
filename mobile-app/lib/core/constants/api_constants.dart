@@ -1,21 +1,56 @@
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiConstants {
   ApiConstants._();
 
-  static String? customServerUrl;
-
-  static const String defaultLocalIp = 'http://192.168.1.87:5000';
+  static const String _prefKeyBaseUrl = 'custom_server_base_url';
+  static const String defaultLocalIp = '192.168.1.81';
+  static const String defaultPort = '5000';
   static const String defaultVpsUrl = 'https://elevateiq-softtech.com/video-platform-api';
 
+  static String? _customBaseUrl;
+
+  /// Initialize and load any saved custom server URL
+  static Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _customBaseUrl = prefs.getString(_prefKeyBaseUrl);
+    } catch (e) {
+      debugPrint('Error loading saved server URL: $e');
+    }
+  }
+
+  /// Update and persist server base URL
+  static Future<void> setBaseUrl(String url) async {
+    final clean = url.trim().replaceAll(RegExp(r'/+$'), '');
+    _customBaseUrl = clean;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefKeyBaseUrl, clean);
+    } catch (e) {
+      debugPrint('Error saving server URL: $e');
+    }
+  }
+
+  /// Reset server base URL to default
+  static Future<void> resetBaseUrl() async {
+    _customBaseUrl = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefKeyBaseUrl);
+    } catch (e) {
+      debugPrint('Error resetting server URL: $e');
+    }
+  }
+
+  /// Base URL for backend server
   static String get baseUrl {
-    if (customServerUrl != null && customServerUrl!.trim().isNotEmpty) {
-      return customServerUrl!.trim().replaceAll(RegExp(r'/+$'), '');
+    if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
+      return _customBaseUrl!;
     }
-    if (kReleaseMode) {
-      return defaultVpsUrl;
-    }
+
     if (kIsWeb) {
       final host = Uri.base.host.isNotEmpty ? Uri.base.host : 'localhost';
       final scheme = Uri.base.scheme.isNotEmpty ? Uri.base.scheme : 'http';
@@ -24,10 +59,9 @@ class ApiConstants {
       }
       return 'http://$host:5000';
     }
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:5000';
-    }
-    return 'http://localhost:5000';
+
+    // Default for Android & iOS mobile devices:
+    return 'http://$defaultLocalIp:$defaultPort';
   }
 
   static const String apiVersion = '/api/v1';

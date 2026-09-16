@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../../config/routes/app_routes.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/theme/app_colors.dart';
@@ -63,14 +65,182 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushReplacementNamed(context, AppRoutes.home);
       }
     } else {
+      final msg = res['message'] ?? 'Authentication failed. Please check credentials.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(res['message'] ?? 'Authentication failed. Please check credentials.'),
+          content: Text(msg),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Server Settings',
+            textColor: Colors.white,
+            onPressed: _showServerConfigDialog,
+          ),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
+  }
+
+  void _showServerConfigDialog() {
+    final serverController = TextEditingController(text: ApiConstants.baseUrl);
+    String? testStatus;
+    bool isTesting = false;
+    Color statusColor = const Color(0xFF64748B);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> runTest() async {
+            setDialogState(() {
+              isTesting = true;
+              testStatus = 'Connecting to server...';
+              statusColor = const Color(0xFF2563EB);
+            });
+
+            final targetUrl = serverController.text.trim().replaceAll(RegExp(r'/+$'), '');
+            try {
+              final uri = Uri.parse('$targetUrl/health');
+              final response = await http.get(uri).timeout(const Duration(seconds: 4));
+              if (response.statusCode == 200) {
+                setDialogState(() {
+                  isTesting = false;
+                  testStatus = 'Connected! Server is online (200 OK)';
+                  statusColor = const Color(0xFF16A34A);
+                });
+              } else {
+                setDialogState(() {
+                  isTesting = false;
+                  testStatus = 'Server responded with code ${response.statusCode}';
+                  statusColor = const Color(0xFFDC2626);
+                });
+              }
+            } catch (e) {
+              setDialogState(() {
+                isTesting = false;
+                testStatus = 'Could not connect ($e)';
+                statusColor = const Color(0xFFDC2626);
+              });
+            }
+          }
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: const [
+                Icon(Icons.dns_rounded, color: Color(0xFF2563EB)),
+                SizedBox(width: 8),
+                Text('Server Settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A))),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Configure backend API host URL for mobile & web devices:',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: serverController,
+                    decoration: InputDecoration(
+                      hintText: 'e.g. http://192.168.1.81:5000',
+                      prefixIcon: const Icon(Icons.link_rounded, color: Color(0xFF3B82F6)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ActionChip(
+                        label: const Text('Wi-Fi (192.168.1.81:5000)', style: TextStyle(fontSize: 11)),
+                        onPressed: () {
+                          serverController.text = 'http://192.168.1.81:5000';
+                          runTest();
+                        },
+                      ),
+                      ActionChip(
+                        label: const Text('Localhost (5000)', style: TextStyle(fontSize: 11)),
+                        onPressed: () {
+                          serverController.text = 'http://127.0.0.1:5000';
+                          runTest();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (testStatus != null)
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: statusColor.withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          if (isTesting)
+                            const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          else
+                            Icon(
+                              statusColor == const Color(0xFF16A34A) ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                              size: 16,
+                              color: statusColor,
+                            ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              testStatus!,
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: statusColor),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isTesting ? null : runTest,
+                child: const Text('Test Connection', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold)),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final newUrl = serverController.text.trim();
+                  if (newUrl.isNotEmpty) {
+                    await ApiConstants.setBaseUrl(newUrl);
+                  }
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Server URL set to ${ApiConstants.baseUrl}'),
+                        backgroundColor: const Color(0xFF16A34A),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                    setState(() {});
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2563EB),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('Save & Apply', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   void _showForgotPasswordDialog() {
@@ -210,9 +380,20 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Server Connection Settings',
+            icon: const Icon(Icons.dns_outlined, color: Color(0xFF64748B)),
+            onPressed: _showServerConfigDialog,
+          ),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
           child: Form(
             key: _formKey,
             child: Column(

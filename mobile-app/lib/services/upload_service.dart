@@ -24,6 +24,34 @@ class UploadResult {
   });
 }
 
+/// Custom MultipartRequest that tracks actual uploaded bytes in real-time
+class MultipartRequestWithProgress extends http.MultipartRequest {
+  final void Function(int bytes, int totalBytes)? onProgress;
+
+  MultipartRequestWithProgress(super.method, super.url, {this.onProgress});
+
+  @override
+  http.ByteStream finalize() {
+    final byteStream = super.finalize();
+    if (onProgress == null) return byteStream;
+
+    final total = contentLength;
+    int bytes = 0;
+
+    return http.ByteStream(
+      byteStream.transform(
+        StreamTransformer.fromHandlers(
+          handleData: (data, sink) {
+            bytes += data.length;
+            onProgress?.call(bytes, total);
+            sink.add(data);
+          },
+        ),
+      ),
+    );
+  }
+}
+
 class UploadService {
   UploadService._();
 
@@ -66,7 +94,7 @@ class UploadService {
             'device_id':     deviceId,
             if (recordingDate != null) 'recording_date': recordingDate,
           }),
-        ).timeout(const Duration(seconds: 8));
+        ).timeout(const Duration(seconds: 10));
 
         onProgress?.call(0.9);
 
@@ -103,7 +131,6 @@ class UploadService {
           rawData: data,
         );
       } catch (e) {
-        // Return actual failure — do not fake success
         onProgress?.call(0.0);
         return UploadResult(
           isSuccess: false,
@@ -124,7 +151,17 @@ class UploadService {
     try {
       final uploadUri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.videoUploadEndpoint}');
       final headers = await AuthService.getAuthHeaders();
-      final request = http.MultipartRequest('POST', uploadUri);
+
+      final request = MultipartRequestWithProgress(
+        'POST',
+        uploadUri,
+        onProgress: (bytes, total) {
+          if (total > 0) {
+            final p = (bytes / total).clamp(0.0, 0.98);
+            onProgress?.call(p);
+          }
+        },
+      );
 
       // Add auth headers
       headers.forEach((k, v) {
@@ -141,10 +178,11 @@ class UploadService {
       if (environmentTag != null) request.fields['environment_tag'] = environmentTag;
       if (deviceId != null)       request.fields['device_id']       = deviceId;
       if (recordingDate != null)  request.fields['recording_date']  = recordingDate;
+      if (durationSeconds != null) request.fields['duration']       = durationSeconds.toString();
 
-      onProgress?.call(0.2);
-      final streamedResponse = await request.send();
-      onProgress?.call(0.8);
+      onProgress?.call(0.05);
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 120));
+      onProgress?.call(0.99);
 
       final response = await http.Response.fromStream(streamedResponse);
       final responseBody = jsonDecode(response.body);

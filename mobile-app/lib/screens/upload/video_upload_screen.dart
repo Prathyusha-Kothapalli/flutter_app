@@ -8,7 +8,6 @@ import '../../services/auth_service.dart';
 import '../../services/device_service.dart';
 import '../../services/upload_service.dart';
 import '../../services/candidate_video_store.dart';
-import '../../services/vosk_voice_command_service.dart';
 import '../../widgets/powered_by_footer.dart';
 
 class VideoUploadScreen extends StatefulWidget {
@@ -47,47 +46,6 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
     _loadCandidateInfo();
     _loadStoredHistory();
     _subscribeRealtime();
-  }
-
-  bool _isListeningVoice = false;
-
-  void _toggleVoiceCommands() async {
-    final service = VoskVoiceCommandService();
-    if (_isListeningVoice) {
-      await service.stopListening();
-      if (mounted) setState(() => _isListeningVoice = false);
-    } else {
-      if (mounted) setState(() => _isListeningVoice = true);
-      await service.startListening(onCommand: (command, rawText) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('🎙️ Vosk Command: "$rawText" (${command == "start_recording" ? "START RECORDING" : "STOP & SAVE RECORDING"})'),
-            backgroundColor: command == 'start_recording' ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-            duration: const Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-
-        if (command == 'start_recording') {
-          // Trigger Start Recording action
-          if (!_isUploading && _activeVideoPath.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('▶️ Starting Video Recording via Vosk Voice Command'),
-                backgroundColor: Color(0xFF10B981),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        } else if (command == 'stop_recording') {
-          // Trigger Stop Recording & Save action
-          if (_activeVideoPath.isNotEmpty && !_isUploading) {
-            _startUpload();
-          }
-        }
-      });
-    }
   }
 
   Future<void> _loadCandidateInfo() async {
@@ -157,20 +115,8 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
 
     setState(() {
       _isUploading = true;
-      _uploadProgress = 0.0;
+      _uploadProgress = 0.05;
       _uploadResult = null;
-    });
-
-    Timer? progressTimer;
-    progressTimer = Timer.periodic(const Duration(milliseconds: 100), (t) {
-      if (mounted) {
-        setState(() {
-          _uploadProgress += 0.08;
-          if (_uploadProgress >= 0.9) {
-            progressTimer?.cancel();
-          }
-        });
-      }
     });
 
     final deviceId = await DeviceService.instance.getDeviceId();
@@ -179,9 +125,14 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
       filePath: _activeVideoPath.isEmpty ? 'recorded_sample.mp4' : _activeVideoPath,
       environmentTag: _activeEnvTag,
       deviceId: deviceId,
+      onProgress: (p) {
+        if (mounted) {
+          setState(() {
+            _uploadProgress = p;
+          });
+        }
+      },
     );
-
-    progressTimer.cancel();
 
     if (mounted) {
       final uploadTimestamp = _getRealtimeUploadTimestamp();
@@ -666,18 +617,6 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
               const PoweredByFooter(),
             ],
           ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _toggleVoiceCommands,
-        backgroundColor: _isListeningVoice ? const Color(0xFFEF4444) : const Color(0xFF7C3AED),
-        icon: Icon(
-          _isListeningVoice ? Icons.mic_rounded : Icons.mic_none_rounded,
-          color: Colors.white,
-        ),
-        label: Text(
-          _isListeningVoice ? 'Listening...' : 'Voice Commands',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
     );
