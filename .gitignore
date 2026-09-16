@@ -89,3 +89,6 @@ override.tf.json
 # Terraform lock file (optional — include if you want reproducible provider versions)
 # .terraform.lock.hcl
 
+
+# Backend env
+backend/.env

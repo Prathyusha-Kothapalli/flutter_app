@@ -46,3 +46,9 @@ app.*.map.json
 .gradle/
 .kotlin/
 
+
+# Keystore files
+*.jks
+*.keystore
+key.properties
+upload-keystore.jks
