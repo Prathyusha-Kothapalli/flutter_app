@@ -55,8 +55,28 @@ class QCTicketService {
 
       const ticket = res.rows[0];
 
-      // Newly uploaded candidate videos remain strictly unassigned in PENDING_QC status
-      // until the Admin explicitly clicks "Assign Tickets"
+      // Auto-assign to least busy QC reviewer
+      try {
+        const reviewersRes = await db.query(`
+          SELECT id, full_name, email FROM users
+          WHERE role IN ('qc', 'qc_team', 'qc_reviewer') AND is_active = TRUE
+          ORDER BY created_at ASC
+        `);
+        if (reviewersRes.rows.length > 0) {
+          const reviewer = reviewersRes.rows[0];
+          await db.query(
+            `UPDATE qc_tickets SET assigned_reviewer_id = $1, assigned_reviewer_name = $2, status = 'assigned', assignment_time = NOW(), updated_at = NOW() WHERE id = $3`,
+            [reviewer.id, reviewer.full_name, ticket.id]
+          );
+          if (videoId) {
+            await db.query(`UPDATE videos SET status = 'assigned_qc', updated_at = NOW() WHERE id = $1`, [videoId]).catch(() => {});
+          }
+          ticket.assigned_reviewer_id = reviewer.id;
+          ticket.assigned_reviewer_name = reviewer.full_name;
+          ticket.status = 'assigned';
+        }
+      } catch (_) {}
+
       return ticket;
     } catch (err) {
       logger.error(`Failed to create ticket for video ${videoId}`, { error: err.message });
@@ -147,8 +167,8 @@ class QCTicketService {
           const ticketCode = `TKT-${Math.floor(10000 + Math.random() * 90000)}`;
           const insRes = await client.query(
             `INSERT INTO qc_tickets (ticket_code, video_id, candidate_id, vendor_id, assigned_reviewer_id, assigned_reviewer_name, status, assigned_at, assignment_time, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, 'ASSIGNED_QC', NOW(), NOW(), NOW(), NOW())
-             ON CONFLICT (video_id) DO UPDATE SET assigned_reviewer_id = EXCLUDED.assigned_reviewer_id, assigned_reviewer_name = EXCLUDED.assigned_reviewer_name, status = 'ASSIGNED_QC', assigned_at = NOW(), updated_at = NOW()
+             VALUES ($1, $2, $3, $4, $5, $6, 'assigned', NOW(), NOW(), NOW(), NOW())
+             ON CONFLICT (video_id) DO UPDATE SET assigned_reviewer_id = EXCLUDED.assigned_reviewer_id, assigned_reviewer_name = EXCLUDED.assigned_reviewer_name, status = 'assigned', assigned_at = NOW(), updated_at = NOW()
              RETURNING *`,
             [ticketCode, video.id, video.candidate_id, video.vendor_id, finalReviewerId, finalReviewerName]
           );
@@ -159,7 +179,7 @@ class QCTicketService {
       if (ticket) {
         const upRes = await client.query(
           `UPDATE qc_tickets
-           SET assigned_reviewer_id = $1, assigned_reviewer_name = $2, status = 'ASSIGNED_QC', assigned_at = NOW(), assignment_time = NOW(), updated_at = NOW()
+           SET assigned_reviewer_id = $1, assigned_reviewer_name = $2, status = 'assigned', assigned_at = NOW(), assignment_time = NOW(), updated_at = NOW()
            WHERE id = $3 RETURNING *`,
           [finalReviewerId, finalReviewerName, ticket.id]
         );
@@ -262,7 +282,7 @@ class QCTicketService {
         SELECT assigned_reviewer_id, COUNT(*) AS active_count
         FROM qc_tickets
         WHERE assigned_reviewer_id IS NOT NULL
-          AND LOWER(status) IN ('pending_qc', 'assigned_qc', 'in_review')
+          AND LOWER(status) IN ('pending_qc', 'assigned', 'in_review')
           AND deleted_at IS NULL
         GROUP BY assigned_reviewer_id
       `);
@@ -282,7 +302,7 @@ class QCTicketService {
           UPDATE qc_tickets
           SET assigned_reviewer_id = $1,
               assigned_reviewer_name = $2,
-              status = 'ASSIGNED_QC',
+              status = 'assigned',
               assigned_at = NOW(),
               assignment_time = NOW(),
               updated_at = NOW()
@@ -372,7 +392,7 @@ class QCTicketService {
           SELECT id, video_id, ticket_code, assigned_reviewer_id, assigned_reviewer_name
           FROM qc_tickets
           WHERE assigned_reviewer_id = $1
-            AND status IN ('pending_qc', 'ASSIGNED_QC')
+            AND status IN ('pending_qc', 'assigned')
             AND (assigned_at IS NOT NULL AND assigned_at < NOW() - ($2 || ' hours')::INTERVAL)
             AND (updated_at IS NOT NULL AND updated_at < NOW() - ($2 || ' hours')::INTERVAL)
             AND deleted_at IS NULL
@@ -520,7 +540,7 @@ class QCTicketService {
       const statsQuery = `
         SELECT
           COUNT(*) AS total_assigned,
-          COUNT(*) FILTER (WHERE LOWER(status) IN ('assigned_qc', 'pending_qc', 'pending')) AS pending_review,
+          COUNT(*) FILTER (WHERE LOWER(status) IN ('assigned', 'pending_qc', 'pending')) AS pending_review,
           COUNT(*) FILTER (WHERE LOWER(status) = 'in_review') AS in_review,
           COUNT(*) FILTER (WHERE LOWER(status) IN ('qc_approved', 'approved')) AS approved,
           COUNT(*) FILTER (WHERE LOWER(status) LIKE '%reject%') AS rejected,
