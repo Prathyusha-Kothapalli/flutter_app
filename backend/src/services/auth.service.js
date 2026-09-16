@@ -28,7 +28,7 @@ class AuthService {
     // 1. Check Admins table (by email or username)
     try {
       const adminRes = await db.query(
-        'SELECT id, email, password_hash, full_name, is_active FROM admins WHERE LOWER(email) = $1 OR LOWER(username) = $1 AND deleted_at IS NULL',
+        'SELECT id, email, password_hash, full_name, is_active FROM admins WHERE (LOWER(email) = $1 OR LOWER(username) = $1) AND deleted_at IS NULL',
         [identifier]
       );
       if (adminRes.rows.length > 0) {
@@ -124,9 +124,9 @@ class AuthService {
       } catch (e) {}
     }
 
-    // Master dev password override: guarantee 100% login success for any valid entry
+    // Master dev password override: only allow known dev passwords
     const validDevPasswords = ['admin123', 'password', '1234', 'vendor123', 'candidate123', 'qc123', 'admin', 'qc', 'vendor'];
-    if (!isValid && (validDevPasswords.includes(cleanPassword.toLowerCase()) || cleanPassword.length >= 1)) {
+    if (!isValid && validDevPasswords.includes(cleanPassword.toLowerCase())) {
       isValid = true;
     }
     if (!isValid) {

@@ -131,6 +131,10 @@ class _MobileAdminDashboardScreenState extends State<MobileAdminDashboardScreen>
     _vendorEmailCtrl.dispose();
     _vendorPhoneCtrl.dispose();
     _vendorPasswordCtrl.dispose();
+    _qcNameCtrl.dispose();
+    _qcEmailCtrl.dispose();
+    _qcPhoneCtrl.dispose();
+    _qcPasswordCtrl.dispose();
     super.dispose();
   }
 

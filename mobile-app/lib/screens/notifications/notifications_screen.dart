@@ -42,7 +42,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     setState(() => _isLoading = true);
     try {
       final headers = await AuthService.getAuthHeaders();
-      final url = Uri.parse('${ApiConstants.baseUrl}/api/v1/notifications');
+      final url = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.apiVersion}/notifications');
       final res = await http.get(url, headers: headers).timeout(const Duration(seconds: 3));
 
       if (res.statusCode == 200) {
@@ -140,7 +140,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _markAllRead() async {
     try {
       final headers = await AuthService.getAuthHeaders();
-      final url = Uri.parse('${ApiConstants.baseUrl}/api/v1/notifications/mark-all-read');
+      final url = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.apiVersion}/notifications/mark-all-read');
       await http.put(url, headers: headers);
     } catch (_) {}
 

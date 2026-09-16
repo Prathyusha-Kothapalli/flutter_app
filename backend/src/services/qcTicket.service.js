@@ -187,7 +187,7 @@ class QCTicketService {
 
         if (ticket.video_id) {
           await client.query(
-            `UPDATE videos SET status = 'ASSIGNED_QC', updated_at = NOW() WHERE id = $1 OR id::text = $1`,
+            `UPDATE videos SET status = 'assigned_qc', updated_at = NOW() WHERE id = $1 OR id::text = $1`,
             [ticket.video_id]
           );
         }
@@ -319,7 +319,7 @@ class QCTicketService {
 
         if (ticket && ticket.video_id) {
           await client.query(
-            `UPDATE videos SET status = 'ASSIGNED_QC', updated_at = NOW() WHERE id = $1 OR id::text = $1`,
+            `UPDATE videos SET status = 'assigned_qc', updated_at = NOW() WHERE id = $1 OR id::text = $1`,
             [ticket.video_id]
           );
         }

@@ -147,7 +147,7 @@ class _CandidateDashboardTabState extends State<CandidateDashboardTab> {
       // Fetch live candidate dashboard stats from API
       try {
         final headers = await AuthService.getAuthHeaders();
-        final url = Uri.parse('${ApiConstants.baseUrl}/api/v1/videos/candidate-stats?candidate_id=$_candidateId');
+        final url = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.apiVersion}/videos/candidate-stats?candidate_id=$_candidateId');
         final res = await http.get(url, headers: headers).timeout(const Duration(seconds: 8));
 
         if (res.statusCode == 200) {

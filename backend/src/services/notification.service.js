@@ -35,11 +35,11 @@ class NotificationService {
       // 2. Insert Notification into Database (Unified Schema Insert)
       const insertQuery = `
         INSERT INTO notifications (
-          user_id, user_role, role, title, message, event_type, type, related_video_id, related_task_id, is_read, created_at
-        ) VALUES ($1, $2, $2, $3, $4, $5, $5, $6, $7, FALSE, NOW())
+          user_id, user_role, title, message, event_type, related_video_id, is_read, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, FALSE, NOW())
         RETURNING *
       `;
-      const res = await db.query(insertQuery, [user_id, role, title, message, type, video_id, task_id]);
+      const res = await db.query(insertQuery, [user_id, role, title, message, type, video_id]);
 
       const notif = res.rows[0];
       const payload = {

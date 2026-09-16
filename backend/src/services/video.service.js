@@ -10,7 +10,7 @@ const qcTicketService = require('./qcTicket.service');
 const notificationService = require('./notification.service');
 
 class VideoService {
-  async createVideo({ candidate_id, vendor_id, title, description, duration, environment_tag, latitude, longitude, device_id, recording_date, status = 'PENDING_QC' }) {
+  async createVideo({ candidate_id, vendor_id, title, description, duration, environment_tag, latitude, longitude, device_id, recording_date, status = 'pending_qc' }) {
     try {
       const insertQuery = `
         INSERT INTO videos (candidate_id, vendor_id, title, description, duration, environment_tag, latitude, longitude, device_id, recording_date, status)
@@ -18,17 +18,17 @@ class VideoService {
         RETURNING *
       `;
       const result = await db.query(insertQuery, [
-        candidate_id || 'c1000000-0000-0000-0000-000000000001',
-        vendor_id || 'v0000000-0000-0000-0000-000000000001',
+        candidate_id,
+        vendor_id,
         title || 'New Video Recording',
         description || null,
         duration || 45,
         environment_tag || 'Kitchen',
         latitude || 17.3850,
         longitude || 78.4867,
-        device_id || 'iPhone 15 Pro',
+        device_id || 'unknown',
         recording_date || new Date(),
-        'PENDING_QC',
+        'pending_qc',
       ]);
 
       const video = result.rows[0];
@@ -115,7 +115,7 @@ class VideoService {
       let videoRecord;
       if (video_id && !video_id.startsWith('vid-')) {
         const updateQuery = `
-          UPDATE videos SET file_name = $1, local_path = $2, file_size = $3, upload_date = NOW(), status = 'PENDING_QC', environment_tag = COALESCE($4, environment_tag), updated_at = NOW()
+          UPDATE videos SET file_name = $1, local_path = $2, file_size = $3, upload_date = NOW(), status = 'pending_qc', environment_tag = COALESCE($4, environment_tag), updated_at = NOW()
           WHERE id = $5 AND deleted_at IS NULL RETURNING *
         `;
         const result = await db.query(updateQuery, [file.originalname || file.filename, relativePath, file.size || 10485760, environment_tag, video_id]);
@@ -125,7 +125,7 @@ class VideoService {
       if (!videoRecord) {
         const insertQuery = `
           INSERT INTO videos (candidate_id, vendor_id, title, file_name, local_path, file_size, environment_tag, upload_date, status, duration)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), 'PENDING_QC', 15) RETURNING *
+          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), 'pending_qc', 15) RETURNING *
         `;
         const videoTitle = title || `${environment_tag || "Recorded"} Dataset Video`;
         const result = await db.query(insertQuery, [
@@ -270,9 +270,9 @@ class VideoService {
    */
   async updateVideoStatus(id, status, rejectionReason = '', actorId = null) {
     try {
-      const normalizedStatus = status ? status.toString().toUpperCase() : 'APPROVED';
-      const isApproved = normalizedStatus.includes('APPROV');
-      const finalStatus = isApproved ? 'APPROVED' : 'REJECTED';
+      const normalizedStatus = status ? status.toString().toLowerCase() : 'approved';
+      const isApproved = normalizedStatus.includes('approv');
+      const finalStatus = isApproved ? 'approved' : 'rejected';
 
       const updateQuery = `
         UPDATE videos
@@ -286,9 +286,10 @@ class VideoService {
       const video = res.rows[0];
 
       // Update corresponding QC Ticket status if present
+      const ticketStatus = isApproved ? 'qc_approved' : 'qc_rejected';
       await db.query(
         `UPDATE qc_tickets SET status = $1, updated_at = NOW() WHERE video_id = $2 OR video_id::text = $2`,
-        [finalStatus, video.id]
+        [ticketStatus, video.id]
       ).catch(() => {});
 
       // Send Notification to Candidate
@@ -357,7 +358,7 @@ class VideoService {
     const video = videoRes.rows[0];
 
     // Soft delete the database record
-    const query = `UPDATE videos SET deleted_at = NOW(), status = 'DELETED' WHERE id = $1 RETURNING id`;
+    const query = `UPDATE videos SET deleted_at = NOW(), status = 'deleted' WHERE id = $1 RETURNING id`;
     const res = await db.query(query, [id]);
 
     // FIX #2: Physically delete the file from disk

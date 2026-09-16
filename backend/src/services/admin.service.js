@@ -135,13 +135,13 @@ class AdminService {
     try {
       const updateRes = await db.query(`
         UPDATE videos
-        SET status = 'APPROVED', updated_at = NOW()
+        SET status = 'approved', updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
         RETURNING *
       `, [videoId]);
 
       const video = updateRes.rows[0];
-      if (!video) return { id: videoId, status: 'APPROVED' };
+      if (!video) return { id: videoId, status: 'approved' };
 
       // Notification to Candidate
       await notificationService.createNotification({
@@ -168,7 +168,7 @@ class AdminService {
       return video;
     } catch (err) {
       logger.error('Error in Admin approveVideo', { error: err.message });
-      return { id: videoId, status: 'APPROVED' };
+      return { id: videoId, status: 'approved' };
     }
   }
 
@@ -179,13 +179,13 @@ class AdminService {
     try {
       const updateRes = await db.query(`
         UPDATE videos
-        SET status = 'REJECTED', updated_at = NOW()
+        SET status = 'rejected', updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
         RETURNING *
       `, [videoId]);
 
       const video = updateRes.rows[0];
-      if (!video) return { id: videoId, status: 'REJECTED' };
+      if (!video) return { id: videoId, status: 'rejected' };
 
       await notificationService.createNotification({
         user_id: video.candidate_id,
@@ -210,7 +210,7 @@ class AdminService {
       return video;
     } catch (err) {
       logger.error('Error in Admin rejectVideo', { error: err.message });
-      return { id: videoId, status: 'REJECTED' };
+      return { id: videoId, status: 'rejected' };
     }
   }
 
@@ -249,16 +249,16 @@ class AdminService {
         const video = videos[i];
         const assignedQC = qcMembers[i % qcMembers.length];
 
-        // Create or update QC ticket using unified assigned_reviewer_id and ASSIGNED_QC status
+        // Create or update QC ticket using unified assigned_reviewer_id and assigned status
         await db.query(`
           INSERT INTO qc_tickets (video_id, candidate_id, vendor_id, assigned_reviewer_id, assigned_reviewer_name, status, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, 'ASSIGNED_QC', NOW(), NOW())
-          ON CONFLICT (video_id) DO UPDATE SET assigned_reviewer_id = $4, assigned_reviewer_name = $5, status = 'ASSIGNED_QC', updated_at = NOW()
+          VALUES ($1, $2, $3, $4, $5, 'assigned', NOW(), NOW())
+          ON CONFLICT (video_id) DO UPDATE SET assigned_reviewer_id = $4, assigned_reviewer_name = $5, status = 'assigned', updated_at = NOW()
         `, [video.id, video.candidate_id || null, video.vendor_id || null, assignedQC.id, assignedQC.full_name || 'QC Specialist']).catch(() => {});
 
         // Update video status to assigned
         await db.query(`
-          UPDATE videos SET status = 'ASSIGNED_QC', updated_at = NOW() WHERE id = $1
+          UPDATE videos SET status = 'assigned_qc', updated_at = NOW() WHERE id = $1
         `, [video.id]).catch(() => {});
 
         // Send real-time notification to Candidate

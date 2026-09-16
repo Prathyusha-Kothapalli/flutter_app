@@ -11,7 +11,7 @@ const notificationService = require('./notification.service');
 class QCReviewService {
   async submitReview({ video_id, qc_reviewer_id, status, audio_score, lighting_score, framing_score, env_match_score, qc_comments, notes }) {
     const isApproved = (status || '').toLowerCase() === 'approved' || (status || '').toLowerCase() === 'qc_approved';
-    const finalVideoStatus = isApproved ? 'QC_APPROVED' : 'QC_REJECTED';
+    const finalVideoStatus = isApproved ? 'qc_approved' : 'qc_rejected';
     const comments = qc_comments || notes || (isApproved ? 'Passed QC Inspection' : 'Failed QC Inspection');
 
     try {

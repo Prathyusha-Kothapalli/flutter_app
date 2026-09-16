@@ -103,12 +103,12 @@ class VendorService {
 
       // 2. Insert Audit Log Entry in audit_logs table
       await db.query(`
-        INSERT INTO audit_logs (action, actor_id, actor_name, resource_type, resource_id, metadata, created_at)
+        INSERT INTO audit_logs (action, actor_id, actor_role, resource_type, resource_id, details, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, NOW())
       `, [
         'VENDOR_CREATED',
         created_by || 'admin-system',
-        'System Admin',
+        'admin',
         'vendor',
         vendor.id,
         JSON.stringify({ company_name, email, vendor_code: vendorCode }),

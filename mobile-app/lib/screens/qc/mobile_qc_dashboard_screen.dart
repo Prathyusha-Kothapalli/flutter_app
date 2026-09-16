@@ -241,7 +241,6 @@ class _MobileQCDashboardScreenState extends State<MobileQCDashboardScreen> {
               fetchedRejected.add(formattedTicket);
             } else if (st.contains('review')) {
               fetchedInReview.add(formattedTicket);
-              fetchedPending.add(formattedTicket);
             } else {
               fetchedPending.add(formattedTicket);
             }

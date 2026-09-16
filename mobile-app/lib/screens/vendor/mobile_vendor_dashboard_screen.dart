@@ -96,6 +96,17 @@ class _MobileVendorDashboardScreenState extends State<MobileVendorDashboardScree
     _checkAuthAndInit();
   }
 
+  @override
+  void dispose() {
+    _candNameCtrl.dispose();
+    _candPhoneCtrl.dispose();
+    _vendorNameCtrl.dispose();
+    _vendorContactCtrl.dispose();
+    _vendorEmailCtrl.dispose();
+    _vendorPhoneCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _checkAuthAndInit() async {
     final session = await AuthService.restoreSession();
     if (session == null || session['token'] == null || session['token']!.isEmpty) {
@@ -560,7 +571,7 @@ class _MobileVendorDashboardScreenState extends State<MobileVendorDashboardScree
                 final headers = await AuthService.getAuthHeaders();
                 // BUG-005 FIX: use real vendor ID from session instead of hardcoded UUID
                 final session = await AuthService.restoreSession();
-                final realVendorId = session?['id'] ?? '10000000-0000-4000-8000-000000000001';
+                final realVendorId = session?['vendorId'] ?? session?['vendor_id'] ?? session?['id'] ?? '';
                 final uri = Uri.parse('${ApiConstants.baseUrl}/api/v1/candidates');
                 await http.post(
                   uri,
