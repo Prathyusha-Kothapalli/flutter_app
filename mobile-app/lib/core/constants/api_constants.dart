@@ -69,8 +69,8 @@ class ApiConstants {
       return 'http://$host:5000';
     }
 
-    // Default for Android & iOS mobile devices:
-    return 'http://$defaultLocalIp:$defaultPort';
+    // Default for Android & iOS mobile devices: use VPS production URL
+    return defaultVpsUrl;
   }
 
   static const String apiVersion = '/api/v1';
