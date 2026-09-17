@@ -57,11 +57,13 @@ const authenticateJWT = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, config.jwt.secret);
     req.user = {
-      id:    decoded.id    || decoded.sub || null,
-      email: decoded.email || null,
-      name:  decoded.name  || null,
-      role:  decoded.role  || 'candidate',
-      tokenId: decoded.jti || null,
+      id:          decoded.id          || decoded.sub || null,
+      email:       decoded.email       || null,
+      name:        decoded.name        || null,
+      role:        decoded.role        || 'candidate',
+      vendor_id:   decoded.vendor_id   || null,
+      vendor_code: decoded.vendor_code || null,
+      tokenId:     decoded.jti         || null,
     };
     return next();
   } catch (error) {

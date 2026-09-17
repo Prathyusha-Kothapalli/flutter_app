@@ -1,13 +1,13 @@
 /**
  * Admin Service
- * Handles Master Admin Controls, Live PostgreSQL Aggregations, QC_APPROVED Video Queue Review,
- * Final Sign-Off (APPROVED / REJECTED), and Real-Time Notifications.
- * ZERO static/dummy fallbacks.
+ * Handles Master Admin Controls, Live PostgreSQL Aggregations,
+ * Admin Review Queue (ADMIN_PENDING videos ONLY),
+ * Final Sign-Off (FINAL_APPROVED / ADMIN_REJECTED), and Real-Time Notifications.
  */
 
 const db = require('../database/connection');
 const logger = require('../utils/logger');
-const notificationService = require('./notification.service');
+const videoService = require('./video.service');
 
 class AdminService {
   /**
@@ -22,20 +22,20 @@ class AdminService {
         db.query(`
           SELECT 
             COUNT(*) AS total_uploaded,
-            COUNT(CASE WHEN (LOWER(v.status) IN ('pending_qc', 'pending', 'unassigned') OR v.status IS NULL) AND (t.assigned_reviewer_id IS NULL OR t.assigned_reviewer_id::text = '') THEN 1 END) AS pending_qc,
-            COUNT(CASE WHEN LOWER(v.status) = 'assigned_qc' OR (t.assigned_reviewer_id IS NOT NULL AND LOWER(v.status) NOT IN ('qc_approved', 'approved', 'rejected', 'qc_rejected')) THEN 1 END) AS assigned_qc,
-            COUNT(CASE WHEN LOWER(v.status) IN ('qc_approved', 'pending_admin_review') THEN 1 END) AS qc_approved,
-            COUNT(CASE WHEN LOWER(v.status) IN ('approved', 'final_approved') THEN 1 END) AS approved,
-            COUNT(CASE WHEN LOWER(v.status) LIKE '%reject%' THEN 1 END) AS rejected
+            COUNT(CASE WHEN UPPER(v.status) = 'QC_PENDING' OR LOWER(v.status) IN ('pending_qc', 'pending', 'assigned_qc', 'in_review', 'unassigned') THEN 1 END) AS pending_qc,
+            COUNT(CASE WHEN UPPER(v.status) = 'ADMIN_PENDING' OR LOWER(v.status) = 'qc_approved' THEN 1 END) AS admin_pending,
+            COUNT(CASE WHEN UPPER(v.status) = 'FINAL_APPROVED' OR LOWER(v.status) = 'approved' THEN 1 END) AS final_approved,
+            COUNT(CASE WHEN UPPER(v.status) = 'QC_REJECTED' OR LOWER(v.status) = 'qc_rejected' THEN 1 END) AS qc_rejected,
+            COUNT(CASE WHEN UPPER(v.status) = 'ADMIN_REJECTED' OR LOWER(v.status) = 'rejected' THEN 1 END) AS admin_rejected
           FROM videos v
-          LEFT JOIN qc_tickets t ON v.id = t.video_id
           WHERE v.deleted_at IS NULL
-        `).catch(() => ({ rows: [{ total_uploaded: '0', pending_qc: '0', assigned_qc: '0', qc_approved: '0', approved: '0', rejected: '0' }] })),
+        `).catch(() => ({ rows: [{ total_uploaded: '0', pending_qc: '0', admin_pending: '0', final_approved: '0', qc_rejected: '0', admin_rejected: '0' }] })),
       ]);
 
       const v = videosRes.rows[0] || {};
-      const approvedCount = parseInt(v.approved || 0, 10);
+      const approvedCount = parseInt(v.final_approved || 0, 10);
       const totalUploaded = parseInt(v.total_uploaded || 0, 10);
+      const totalRejected = parseInt(v.qc_rejected || 0, 10) + parseInt(v.admin_rejected || 0, 10);
 
       // Fetch real 7-day daily trends grouped by day from PostgreSQL
       let daily_trends = [];
@@ -44,8 +44,8 @@ class AdminService {
           SELECT
             TO_CHAR(DATE_TRUNC('day', COALESCE(upload_date, created_at)), 'Dy') AS day,
             COUNT(*) AS uploaded,
-            COUNT(CASE WHEN LOWER(status) = 'approved' THEN 1 END) AS approved,
-            COUNT(CASE WHEN LOWER(status) IN ('qc_rejected', 'rejected') THEN 1 END) AS rejected
+            COUNT(CASE WHEN UPPER(status) = 'FINAL_APPROVED' OR LOWER(status) = 'approved' THEN 1 END) AS approved,
+            COUNT(CASE WHEN UPPER(status) LIKE '%REJECT%' OR LOWER(status) LIKE '%reject%' THEN 1 END) AS rejected
           FROM videos
           WHERE deleted_at IS NULL
             AND COALESCE(upload_date, created_at) >= NOW() - INTERVAL '7 days'
@@ -63,7 +63,6 @@ class AdminService {
         daily_trends = [];
       }
 
-      // Fetch distinct environment_tag count as projects proxy
       let totalProjects = 0;
       try {
         const projRes = await db.query(`SELECT COUNT(DISTINCT environment_tag) AS cnt FROM videos WHERE deleted_at IS NULL`);
@@ -77,9 +76,12 @@ class AdminService {
         total_projects: totalProjects,
         total_uploaded_videos: totalUploaded,
         pending_qc: parseInt(v.pending_qc || 0, 10),
-        qc_approved: parseInt(v.qc_approved || 0, 10),
+        qc_approved: parseInt(v.admin_pending || 0, 10),
+        admin_pending: parseInt(v.admin_pending || 0, 10),
+        qc_rejected: parseInt(v.qc_rejected || 0, 10),
+        admin_rejected: parseInt(v.admin_rejected || 0, 10),
         approved: approvedCount,
-        rejected: parseInt(v.rejected || 0, 10),
+        rejected: totalRejected,
         daily_trends,
       };
     } catch (err) {
@@ -92,6 +94,7 @@ class AdminService {
         total_uploaded_videos: 0,
         pending_qc: 0,
         qc_approved: 0,
+        admin_pending: 0,
         approved: 0,
         rejected: 0,
         daily_trends: [],
@@ -100,24 +103,31 @@ class AdminService {
   }
 
   /**
-   * Get Admin Review Queue: Strictly returns only videos with status QC_APPROVED
+   * Get Admin Review Queue: Strictly returns ONLY videos with status ADMIN_PENDING (or legacy qc_approved)
    */
   async getQCApprovedQueue() {
     try {
       const queryText = `
         SELECT v.id, v.title, v.description, v.duration, v.environment_tag, v.latitude, v.longitude,
-               v.device_id, v.recording_date, v.status, v.upload_date, v.created_at,
-               c.id AS candidate_id, c.full_name AS candidate_name, c.email AS candidate_email,
-               ven.id AS vendor_id, ven.company_name AS vendor_name,
-               qr.audio_score, qr.lighting_score, qr.framing_score, qr.env_match_score, qr.qc_comments
+               v.device_id, v.recording_date, v.status, v.upload_date, v.created_at, v.updated_at,
+               c.id AS candidate_id, c.full_name AS candidate_name, c.email AS candidate_email, c.phone AS candidate_phone,
+               ven.id AS vendor_id, ven.company_name AS vendor_name, ven.vendor_code,
+               v.qc_reviewer_id, v.qc_reviewer_name, v.qc_decision, v.qc_rejection_reason, v.qc_reviewed_at,
+               qr.reviewer_name AS qc_inspector_name, qr.audio_score, qr.lighting_score, qr.framing_score, qr.env_match_score, qr.qc_comments
         FROM videos v
         LEFT JOIN candidates c ON v.candidate_id = c.id
         LEFT JOIN vendors ven ON v.vendor_id = ven.id
         LEFT JOIN (
-          SELECT DISTINCT ON (video_id) video_id, audio_score, lighting_score, framing_score, env_match_score, qc_comments
+          SELECT DISTINCT ON (video_id) video_id, reviewer_name, audio_score, lighting_score, framing_score, env_match_score, qc_comments
           FROM qc_reviews ORDER BY video_id, created_at DESC
         ) qr ON v.id = qr.video_id
-        WHERE v.deleted_at IS NULL AND (LOWER(v.status) = 'qc_approved' OR LOWER(v.status) = 'pending_admin_review')
+        WHERE v.deleted_at IS NULL
+          AND (
+            UPPER(v.status) = 'ADMIN_PENDING'
+            OR LOWER(v.status) = 'admin_pending'
+            OR LOWER(v.status) = 'qc_approved'
+            OR LOWER(v.status) = 'pending_admin_review'
+          )
         ORDER BY v.updated_at DESC
       `;
       const res = await db.query(queryText);
@@ -129,88 +139,50 @@ class AdminService {
   }
 
   /**
-   * Admin Final Approval (APPROVED)
+   * Admin Final Approval (ADMIN_PENDING → FINAL_APPROVED)
    */
-  async approveVideo(videoId, adminComments = 'Approved by System Admin') {
+  async approveVideo(videoId, adminComments = 'Approved by System Admin', adminId = null, adminName = 'System Administrator') {
     try {
-      const updateRes = await db.query(`
-        UPDATE videos
-        SET status = 'approved', updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
-        RETURNING *
-      `, [videoId]);
-
-      const video = updateRes.rows[0];
-      if (!video) return { id: videoId, status: 'approved' };
-
-      // Notification to Candidate
-      await notificationService.createNotification({
-        user_id: video.candidate_id,
-        role: 'candidate',
-        title: 'Video Approved! 🎉',
-        message: `Congratulations! Your uploaded video "${video.title || 'Video'}" received final Admin Approval.`,
-        video_id: videoId,
-        type: 'admin_approved',
-        color: '#10B981',
-      }).catch(() => {});
-
-      // Notification to Vendor
-      await notificationService.createNotification({
-        user_id: video.vendor_id,
-        role: 'vendor',
-        title: 'Video Approved by Admin',
-        message: `Video "${video.title || 'Video'}" has been approved by Admin.`,
-        video_id: videoId,
-        type: 'admin_approved',
-        color: '#10B981',
-      }).catch(() => {});
-
-      return video;
+      const updated = await videoService.updateVideoStatus(
+        videoId,
+        'FINAL_APPROVED',
+        '',
+        adminId || '00000000-0000-0000-0000-000000000001',
+        'admin',
+        adminName || 'System Administrator',
+        { comments: adminComments }
+      );
+      return updated;
     } catch (err) {
-      logger.error('Error in Admin approveVideo', { error: err.message });
-      return { id: videoId, status: 'approved' };
+      logger.error('Error in Admin approveVideo:', { error: err.message });
+      throw err;
     }
   }
 
   /**
-   * Admin Final Rejection (REJECTED)
+   * Admin Final Rejection (ADMIN_PENDING → ADMIN_REJECTED) with mandatory rejection reason
    */
-  async rejectVideo(videoId, adminComments = 'Rejected by System Admin') {
+  async rejectVideo(videoId, adminComments, adminId = null, adminName = 'System Administrator') {
+    if (!adminComments || adminComments.trim().length === 0) {
+      const error = new Error('Rejection reason is mandatory when Admin rejects a video.');
+      error.statusCode = 400;
+      throw error;
+    }
+
     try {
-      const updateRes = await db.query(`
-        UPDATE videos
-        SET status = 'rejected', updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
-        RETURNING *
-      `, [videoId]);
-
-      const video = updateRes.rows[0];
-      if (!video) return { id: videoId, status: 'rejected' };
-
-      await notificationService.createNotification({
-        user_id: video.candidate_id,
-        role: 'candidate',
-        title: 'Video Rejected by Admin',
-        message: `Your video "${video.title || 'Video'}" was rejected by Admin. Reason: "${adminComments}".`,
-        video_id: videoId,
-        type: 'admin_rejected',
-        color: '#EF4444',
-      }).catch(() => {});
-
-      await notificationService.createNotification({
-        user_id: video.vendor_id,
-        role: 'vendor',
-        title: 'Candidate Video Rejected by Admin',
-        message: `Video "${video.title || 'Video'}" rejected during Admin final sign-off.`,
-        video_id: videoId,
-        type: 'admin_rejected',
-        color: '#EF4444',
-      }).catch(() => {});
-
-      return video;
+      const updated = await videoService.updateVideoStatus(
+        videoId,
+        'ADMIN_REJECTED',
+        adminComments.trim(),
+        adminId || '00000000-0000-0000-0000-000000000001',
+        'admin',
+        adminName || 'System Administrator',
+        { comments: adminComments }
+      );
+      return updated;
     } catch (err) {
-      logger.error('Error in Admin rejectVideo', { error: err.message });
-      return { id: videoId, status: 'rejected' };
+      logger.error('Error in Admin rejectVideo:', { error: err.message });
+      throw err;
     }
   }
 
@@ -219,10 +191,9 @@ class AdminService {
    */
   async dispatchVideosToQC() {
     try {
-      // 1. Fetch pending videos needing QC assignment
       const pendingVideosRes = await db.query(`
         SELECT id, candidate_id, title FROM videos
-        WHERE deleted_at IS NULL AND (LOWER(status) = 'pending_qc' OR LOWER(status) = 'pending_dispatch' OR LOWER(status) = 'pending')
+        WHERE deleted_at IS NULL AND (UPPER(status) = 'QC_PENDING' OR LOWER(status) IN ('pending_qc', 'pending_dispatch', 'pending'))
         ORDER BY created_at ASC
       `);
 
@@ -231,7 +202,6 @@ class AdminService {
         return { dispatched_count: 0, message: 'No pending candidate videos to dispatch.' };
       }
 
-      // 2. Fetch active QC team members
       const qcMembersRes = await db.query(`
         SELECT id, full_name, email FROM users
         WHERE role IN ('qc', 'qc_team', 'qc_reviewer') AND is_active = TRUE
@@ -239,38 +209,19 @@ class AdminService {
 
       let qcMembers = qcMembersRes.rows;
       if (qcMembers.length === 0) {
-        // Default QC reviewer fallback ID
         qcMembers = [{ id: 'a0000000-0000-0000-0000-000000000001', full_name: 'Lead QC Inspector' }];
       }
 
-      // 3. Divide videos evenly among QC team members
       let dispatchedCount = 0;
       for (let i = 0; i < videos.length; i++) {
         const video = videos[i];
         const assignedQC = qcMembers[i % qcMembers.length];
 
-        // Create or update QC ticket using unified assigned_reviewer_id and assigned status
         await db.query(`
           INSERT INTO qc_tickets (video_id, candidate_id, vendor_id, assigned_reviewer_id, assigned_reviewer_name, status, created_at, updated_at)
           VALUES ($1, $2, $3, $4, $5, 'assigned', NOW(), NOW())
           ON CONFLICT (video_id) DO UPDATE SET assigned_reviewer_id = $4, assigned_reviewer_name = $5, status = 'assigned', updated_at = NOW()
         `, [video.id, video.candidate_id || null, video.vendor_id || null, assignedQC.id, assignedQC.full_name || 'QC Specialist']).catch(() => {});
-
-        // Update video status to assigned
-        await db.query(`
-          UPDATE videos SET status = 'assigned_qc', updated_at = NOW() WHERE id = $1
-        `, [video.id]).catch(() => {});
-
-        // Send real-time notification to Candidate
-        await notificationService.createNotification({
-          user_id: video.candidate_id,
-          role: 'candidate',
-          title: 'Video Assigned to QC Team 🔍',
-          message: `Your video "${video.title || 'Video'}" has been dispatched to QC Inspector ${assignedQC.full_name} for quality review.`,
-          video_id: video.id,
-          type: 'qc_assigned',
-          color: '#8B5CF6',
-        }).catch(() => {});
 
         dispatchedCount++;
       }
@@ -341,8 +292,8 @@ class AdminService {
     const hash = await bcrypt.hash(password || 'qc123456', 10);
     const query = `
       INSERT INTO users (full_name, email, phone, password_hash, role, is_active, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, 'qc', TRUE, NOW(), NOW())
-      ON CONFLICT (email) DO UPDATE SET full_name = EXCLUDED.full_name, password_hash = EXCLUDED.password_hash, updated_at = NOW()
+      VALUES ($1, $2, $3, $4, 'qc_team', TRUE, NOW(), NOW())
+      ON CONFLICT (email) DO UPDATE SET full_name = EXCLUDED.full_name, password_hash = EXCLUDED.password_hash, role = 'qc_team', updated_at = NOW()
       RETURNING id, full_name, email, phone, role, created_at
     `;
     const res = await db.query(query, [full_name, email, phone || null, hash]);

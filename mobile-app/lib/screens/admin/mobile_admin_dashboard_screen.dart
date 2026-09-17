@@ -427,64 +427,56 @@ class _MobileAdminDashboardScreenState extends State<MobileAdminDashboardScreen>
     }
   }
 
-  void _updateVideoStatus(String id, String newStatus) async {
-    final isReject = newStatus == 'Rejected' || newStatus == 'Admin Reject';
-    final targetStatus = isReject ? 'Rejected' : 'Approved';
-
+  void _adminApproveVideo(String id, String rawId) async {
+    final videoId = rawId.isNotEmpty ? rawId : id;
     setState(() {
-      final index = _qcSubmissions.indexWhere((item) => item['id'] == id || item['raw_id'] == id);
+      final index = _qcSubmissions.indexWhere((item) => item['id'] == id || item['raw_id'] == id || item['raw_id'] == rawId);
       if (index != -1) {
-        _qcSubmissions[index]['status'] = targetStatus;
-        if (targetStatus == 'Approved') {
-          _approvedCount++;
-          if (_pendingQCCount > 0) _pendingQCCount--;
-        } else if (targetStatus == 'Rejected') {
-          _rejectedCount++;
-          if (_pendingQCCount > 0) _pendingQCCount--;
-        }
+        _qcSubmissions[index]['status'] = 'Final Approved';
+        _approvedCount++;
+        if (_pendingQCCount > 0) _pendingQCCount--;
       }
       _recentActivities.insert(0, {
-        'title': 'Admin Video $targetStatus',
-        'subtitle': 'Video $id evaluated as $targetStatus by Admin',
+        'title': 'Admin Video Final Approved',
+        'subtitle': 'Video $id approved for dataset release',
         'time': 'Just now',
-        'icon': isReject ? Icons.cancel_rounded : Icons.check_circle_rounded,
-        'color': isReject ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+        'icon': Icons.verified_rounded,
+        'color': const Color(0xFF10B981),
         'read': false,
       });
     });
 
-    // Execute backend API updates & physical VPS file cleanup on rejection
     try {
       final headers = await AuthService.getAuthHeaders();
-      final videoId = id.length > 8 ? id : id;
-
-      final statusUrl = Uri.parse('$_apiBaseUrl/videos/$videoId/status');
-      await http.patch(
-        statusUrl,
+      final approveUrl = Uri.parse('$_apiBaseUrl/admins/videos/$videoId/approve');
+      final res = await http.post(
+        approveUrl,
         headers: headers,
         body: jsonEncode({
-          'status': targetStatus,
-          'rejection_reason': isReject ? 'Quality standards not met during Admin review' : '',
+          'comments': 'Approved during Admin executive review',
+          'admin_feedback': 'Meets quality dataset specifications',
         }),
-      ).timeout(const Duration(seconds: 3));
+      ).timeout(const Duration(seconds: 4));
 
-      if (isReject) {
-        // Physical file delete call on rejection
-        final delUrl = Uri.parse('$_apiBaseUrl/videos/$videoId');
-        await http.delete(delUrl, headers: headers).timeout(const Duration(seconds: 3));
+      if (res.statusCode != 200) {
+        // Fallback to video status patch
+        final fallbackUrl = Uri.parse('$_apiBaseUrl/videos/$videoId/status');
+        await http.patch(
+          fallbackUrl,
+          headers: headers,
+          body: jsonEncode({'status': 'FINAL_APPROVED'}),
+        ).timeout(const Duration(seconds: 4));
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Admin approve API error: $e');
+    }
 
-    // Persist to local storage & broadcast channel
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('candidate_local_uploads', jsonEncode(_qcSubmissions));
-    } catch (_) {}
+    _loadDashboardData();
 
     if (kIsWeb) {
       try {
         final bc = web.BroadcastChannelStub('platform_realtime_channel');
-        bc.postMessage(jsonEncode({'type': 'ADMIN_DECISION', 'id': id, 'status': targetStatus}));
+        bc.postMessage(jsonEncode({'type': 'ADMIN_DECISION', 'id': id, 'status': 'FINAL_APPROVED'}));
         bc.close();
       } catch (_) {}
     }
@@ -492,12 +484,155 @@ class _MobileAdminDashboardScreenState extends State<MobileAdminDashboardScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(isReject ? 'Video $id rejected & file removed from VPS storage' : 'Video $id final approved by Admin ✓'),
-          backgroundColor: isReject ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+          content: Text('Video $id final approved by Admin ✓'),
+          backgroundColor: const Color(0xFF10B981),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 3),
         ),
       );
+    }
+  }
+
+  void _showAdminRejectModal(String id, String rawId) {
+    final reasonCtrl = TextEditingController();
+    final videoId = rawId.isNotEmpty ? rawId : id;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.cancel_rounded, color: Color(0xFFDC2626), size: 24),
+            SizedBox(width: 8),
+            Text('Reject Video (Admin)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Please provide a mandatory reason for rejecting this video. This feedback will be visible to the Candidate and Vendor.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: reasonCtrl,
+              maxLines: 3,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+              decoration: InputDecoration(
+                hintText: 'e.g. Video background noise is too high, lighting is too dark...',
+                hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final reason = reasonCtrl.text.trim();
+              if (reason.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Rejection reason is mandatory!'),
+                    backgroundColor: Color(0xFFDC2626),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pop(dialogCtx);
+
+              setState(() {
+                final index = _qcSubmissions.indexWhere((item) => item['id'] == id || item['raw_id'] == id || item['raw_id'] == rawId);
+                if (index != -1) {
+                  _qcSubmissions[index]['status'] = 'Admin Rejected';
+                  _qcSubmissions[index]['admin_rejection_reason'] = reason;
+                  _rejectedCount++;
+                  if (_pendingQCCount > 0) _pendingQCCount--;
+                }
+                _recentActivities.insert(0, {
+                  'title': 'Admin Video Rejected',
+                  'subtitle': 'Video $id rejected: $reason',
+                  'time': 'Just now',
+                  'icon': Icons.cancel_rounded,
+                  'color': const Color(0xFFDC2626),
+                  'read': false,
+                });
+              });
+
+              try {
+                final headers = await AuthService.getAuthHeaders();
+                final rejectUrl = Uri.parse('$_apiBaseUrl/admins/videos/$videoId/reject');
+                final res = await http.post(
+                  rejectUrl,
+                  headers: headers,
+                  body: jsonEncode({'reason': reason, 'rejection_reason': reason}),
+                ).timeout(const Duration(seconds: 4));
+
+                if (res.statusCode != 200) {
+                  final fallbackUrl = Uri.parse('$_apiBaseUrl/videos/$videoId/status');
+                  await http.patch(
+                    fallbackUrl,
+                    headers: headers,
+                    body: jsonEncode({'status': 'ADMIN_REJECTED', 'rejection_reason': reason}),
+                  ).timeout(const Duration(seconds: 4));
+                }
+              } catch (e) {
+                debugPrint('Admin reject API error: $e');
+              }
+
+              _loadDashboardData();
+
+              if (kIsWeb) {
+                try {
+                  final bc = web.BroadcastChannelStub('platform_realtime_channel');
+                  bc.postMessage(jsonEncode({'type': 'ADMIN_DECISION', 'id': id, 'status': 'ADMIN_REJECTED'}));
+                  bc.close();
+                } catch (_) {}
+              }
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Video $id rejected with feedback.'),
+                    backgroundColor: const Color(0xFFDC2626),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            child: const Text('Confirm Rejection', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _updateVideoStatus(String id, String newStatus) async {
+    final rawId = _qcSubmissions.firstWhere(
+      (item) => item['id'] == id || item['raw_id'] == id,
+      orElse: () => <String, dynamic>{},
+    )['raw_id']?.toString() ?? id;
+
+    if (newStatus.contains('Reject') || newStatus == 'Rejected') {
+      _showAdminRejectModal(id, rawId);
+    } else {
+      _adminApproveVideo(id, rawId);
     }
   }
 
@@ -1890,6 +2025,29 @@ class _MobileAdminDashboardScreenState extends State<MobileAdminDashboardScreen>
           if ((item['assigned_reviewer_name'] ?? item['assignedTo'] ?? item['assigned_to'] ?? item['assigned_qc']) != null && (item['assigned_reviewer_name'] ?? item['assignedTo'] ?? item['assigned_to'] ?? item['assigned_qc']).toString().isNotEmpty) ...[
             const SizedBox(height: 4),
             Text('Assigned to: ${item['assigned_reviewer_name'] ?? item['assignedTo'] ?? item['assigned_to'] ?? item['assigned_qc']}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF7C3AED))),
+          ],
+          if ((item['admin_rejection_reason'] ?? item['qc_rejection_reason'] ?? item['rejection_reason'] ?? item['reason'] ?? '').toString().trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFECACA)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: Color(0xFFDC2626), size: 14),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Rejection Reason: ${item['admin_rejection_reason'] ?? item['qc_rejection_reason'] ?? item['rejection_reason'] ?? item['reason']}',
+                      style: const TextStyle(color: Color(0xFFDC2626), fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
           const SizedBox(height: 12),
 

@@ -4,10 +4,13 @@
 
 const { isValidUUID } = require('../utils/uuid');
 
-const ALLOWED_QC_STATUSES = ['approved', 'rejected'];
+const ALLOWED_QC_STATUSES = [
+  'approved', 'rejected', 'qc_approved', 'qc_rejected', 'admin_pending',
+  'QC_APPROVED', 'QC_REJECTED', 'ADMIN_PENDING', 'APPROVED', 'REJECTED'
+];
 
 function validateCreateQCReview(req, res, next) {
-  const { video_id, status, reject_reason, reviewer_name, reviewer_id } = req.body || {};
+  const { video_id, status, reject_reason, reviewer_name, reviewer_id, qc_comments } = req.body || {};
   const errors = [];
 
   // Validate video_id
@@ -26,35 +29,26 @@ function validateCreateQCReview(req, res, next) {
     });
   }
 
-  // Validate reject_reason if status is 'rejected'
-  if (status === 'rejected') {
-    if (!reject_reason || typeof reject_reason !== 'string' || reject_reason.trim().length === 0) {
+  // Validate reject_reason if rejecting
+  const normStatus = (status || '').toLowerCase();
+  const rejText = reject_reason || qc_comments;
+  if (normStatus.includes('reject')) {
+    if (!rejText || typeof rejText !== 'string' || rejText.trim().length === 0) {
       errors.push({
         field: 'reject_reason',
-        message: 'reject_reason is required when status is "rejected"',
+        message: 'reject_reason is required when status is rejected',
       });
     }
   }
 
-  // Validate reviewer identification (reviewer_name or reviewer_id)
-  if (!reviewer_name && !reviewer_id) {
+  // Reviewer can come from req.user
+  const effectiveReviewerName = reviewer_name || req.user?.name || req.user?.full_name;
+  const effectiveReviewerId = reviewer_id || req.user?.id;
+
+  if (!effectiveReviewerName && !effectiveReviewerId) {
     errors.push({
       field: 'reviewer_name',
       message: 'reviewer_name or reviewer_id is required',
-    });
-  }
-
-  if (reviewer_name && typeof reviewer_name !== 'string') {
-    errors.push({
-      field: 'reviewer_name',
-      message: 'reviewer_name must be a string',
-    });
-  }
-
-  if (reviewer_id && !isValidUUID(reviewer_id)) {
-    errors.push({
-      field: 'reviewer_id',
-      message: 'reviewer_id must be a valid UUID',
     });
   }
 

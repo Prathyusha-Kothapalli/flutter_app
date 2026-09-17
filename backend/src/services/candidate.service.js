@@ -98,7 +98,22 @@ class CandidateService {
     const offset = (pageNum - 1) * limitNum;
 
     try {
-      let countQuery = 'SELECT COUNT(*) FROM candidates c LEFT JOIN vendors v ON c.vendor_id = v.id WHERE c.deleted_at IS NULL';
+      const whereConditions = ['c.deleted_at IS NULL'];
+      const params = [];
+
+      if (vendor_id && vendor_code) {
+        params.push(vendor_id.toString(), vendor_code.toString());
+        whereConditions.push(`(c.vendor_id::text = $1::text OR LOWER(v.vendor_code) = LOWER($2) OR v.id::text = $1::text)`);
+      } else if (vendor_id) {
+        params.push(vendor_id.toString());
+        whereConditions.push(`(c.vendor_id::text = $1::text OR v.id::text = $1::text)`);
+      } else if (vendor_code) {
+        params.push(vendor_code.toString());
+        whereConditions.push(`(LOWER(v.vendor_code) = LOWER($1) OR c.vendor_id::text = $1::text)`);
+      }
+
+      const whereClause = ' WHERE ' + whereConditions.join(' AND ');
+      const countQuery = `SELECT COUNT(*) FROM candidates c LEFT JOIN vendors v ON c.vendor_id = v.id ${whereClause}`;
       let selectQuery = `
         SELECT
           c.id,
@@ -114,20 +129,8 @@ class CandidateService {
           c.updated_at
         FROM candidates c
         LEFT JOIN vendors v ON c.vendor_id = v.id
-        WHERE c.deleted_at IS NULL
+        ${whereClause}
       `;
-
-      const params = [];
-      if (vendor_id) {
-        params.push(vendor_id);
-        countQuery += ` AND c.vendor_id = $${params.length}`;
-        selectQuery += ` AND c.vendor_id = $${params.length}`;
-      }
-      if (vendor_code) {
-        params.push(vendor_code);
-        countQuery += ` AND (LOWER(v.vendor_code) = LOWER($${params.length}) OR c.vendor_id = $${params.length})`;
-        selectQuery += ` AND (LOWER(v.vendor_code) = LOWER($${params.length}) OR c.vendor_id = $${params.length})`;
-      }
 
       const countResult = await db.query(countQuery, params);
       const total_records = parseInt(countResult.rows[0]?.count || 0, 10);

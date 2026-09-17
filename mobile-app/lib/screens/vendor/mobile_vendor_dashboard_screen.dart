@@ -310,22 +310,25 @@ class _MobileVendorDashboardScreenState extends State<MobileVendorDashboardScree
           final id = vid['id']?.toString() ?? '';
           if (id.isNotEmpty) processedIds.add(id);
 
-          final rawStatus = (vid['status'] ?? 'PENDING_QC').toString().toUpperCase().replaceAll(' ', '_');
+          final rawStatus = (vid['status'] ?? 'QC_PENDING').toString().toUpperCase().replaceAll(' ', '_');
           String displayStatus;
-          if (rawStatus == 'QC_APPROVED') {
-            displayStatus = 'QC Approved';
-            approvedCount++;
-          } else if (rawStatus == 'APPROVED' || rawStatus == 'FINAL_APPROVED') {
-            displayStatus = 'Final Approved 🎉';
-            approvedCount++;
-          } else if (rawStatus == 'ASSIGNED_QC' || rawStatus == 'IN_REVIEW') {
-            displayStatus = 'Assigned to QC';
+          if (rawStatus == 'QC_PENDING' || rawStatus == 'PENDING_QC') {
+            displayStatus = 'Waiting for QC';
             pendingCount++;
-          } else if (rawStatus.contains('REJECT')) {
-            displayStatus = 'Rejected';
+          } else if (rawStatus == 'ADMIN_PENDING' || rawStatus == 'QC_APPROVED') {
+            displayStatus = 'Waiting for Admin';
+            pendingCount++;
+          } else if (rawStatus == 'FINAL_APPROVED' || rawStatus == 'APPROVED') {
+            displayStatus = 'Final Approved';
+            approvedCount++;
+          } else if (rawStatus == 'QC_REJECTED') {
+            displayStatus = 'QC Rejected';
+            rejectedCount++;
+          } else if (rawStatus == 'ADMIN_REJECTED' || rawStatus.contains('REJECT')) {
+            displayStatus = 'Admin Rejected';
             rejectedCount++;
           } else {
-            displayStatus = 'Pending QC';
+            displayStatus = 'Waiting for QC';
             pendingCount++;
           }
 
@@ -338,12 +341,17 @@ class _MobileVendorDashboardScreenState extends State<MobileVendorDashboardScree
 
           _vendorUploads.add({
             'id': id.isNotEmpty ? id : 'VID-${_vendorUploads.length + 1}',
+            'raw_id': id,
             'title': vid['title'] ?? 'Dataset Video Recording',
             'candidateName': vid['candidate_name'] ?? vid['full_name'] ?? 'Candidate',
             'candidatePhone': vid['candidate_phone'] ?? vid['phone'] ?? 'N/A',
             'vendor_code': vCode.isNotEmpty ? vCode : (vendorCode.isNotEmpty ? vendorCode : 'VEN-001'),
             'env': vid['environment_tag'] ?? 'Indoor',
             'status': displayStatus,
+            'raw_status': rawStatus,
+            'rejection_reason': vid['rejection_reason'] ?? vid['qc_rejection_reason'] ?? vid['admin_rejection_reason'] ?? '',
+            'qc_rejection_reason': vid['qc_rejection_reason'] ?? '',
+            'admin_rejection_reason': vid['admin_rejection_reason'] ?? '',
             'duration': '$durStr Mins',
             'time': 'Just Now',
           });
@@ -1666,14 +1674,68 @@ class _MobileVendorDashboardScreenState extends State<MobileVendorDashboardScree
             const SizedBox(height: 4),
             Row(
               children: [
-                const Text('Status: '),
+                const Text('Status: ', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: AppColors.success.withAlpha(25), borderRadius: BorderRadius.circular(6)),
-                  child: Text(item['status'] ?? 'Approved', style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 11)),
+                  decoration: BoxDecoration(
+                    color: (item['status']?.toString().contains('Approved') == true)
+                        ? const Color(0xFFECFDF5)
+                        : (item['status']?.toString().contains('Reject') == true)
+                            ? const Color(0xFFFEF2F2)
+                            : const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: (item['status']?.toString().contains('Approved') == true)
+                          ? const Color(0xFFA7F3D0)
+                          : (item['status']?.toString().contains('Reject') == true)
+                              ? const Color(0xFFFECACA)
+                              : const Color(0xFFFDE68A),
+                    ),
+                  ),
+                  child: Text(
+                    item['status'] ?? 'Waiting for QC',
+                    style: TextStyle(
+                      color: (item['status']?.toString().contains('Approved') == true)
+                          ? const Color(0xFF059669)
+                          : (item['status']?.toString().contains('Reject') == true)
+                              ? const Color(0xFFDC2626)
+                              : const Color(0xFFD97706),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
                 ),
               ],
             ),
+            if ((item['rejection_reason'] ?? item['admin_rejection_reason'] ?? item['qc_rejection_reason'] ?? '').toString().trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFECACA)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.feedback_outlined, color: Color(0xFFDC2626), size: 14),
+                        SizedBox(width: 4),
+                        Text('Rejection Reason:', style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.bold, fontSize: 11)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item['rejection_reason'] ?? item['admin_rejection_reason'] ?? item['qc_rejection_reason'],
+                      style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         actions: [

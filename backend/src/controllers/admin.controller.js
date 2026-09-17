@@ -33,13 +33,22 @@ class AdminController {
     try {
       const { videoId } = req.params;
       const { comments } = req.body;
-      const result = await adminService.approveVideo(videoId, comments);
+      const adminId = req.user?.id;
+      const adminName = req.user?.name || req.user?.full_name || 'System Administrator';
+      const result = await adminService.approveVideo(videoId, comments, adminId, adminName);
       return res.status(200).json({
         status: 'success',
-        message: 'Video approved by Admin. Vendor payout credited.',
+        message: 'Video final approved by Admin.',
         data: result,
       });
     } catch (error) {
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({
+          status: 'error',
+          statusCode: error.statusCode,
+          message: error.message,
+        });
+      }
       next(error);
     }
   }
@@ -47,14 +56,24 @@ class AdminController {
   async rejectVideo(req, res, next) {
     try {
       const { videoId } = req.params;
-      const { comments } = req.body;
-      const result = await adminService.rejectVideo(videoId, comments);
+      const { comments, rejection_reason, reject_reason, reason } = req.body;
+      const rejReason = rejection_reason || reject_reason || reason || comments || '';
+      const adminId = req.user?.id;
+      const adminName = req.user?.name || req.user?.full_name || 'System Administrator';
+      const result = await adminService.rejectVideo(videoId, rejReason, adminId, adminName);
       return res.status(200).json({
         status: 'success',
         message: 'Video rejected by Admin.',
         data: result,
       });
     } catch (error) {
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({
+          status: 'error',
+          statusCode: error.statusCode,
+          message: error.message,
+        });
+      }
       next(error);
     }
   }

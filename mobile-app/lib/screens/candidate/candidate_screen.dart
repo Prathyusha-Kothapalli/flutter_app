@@ -507,19 +507,27 @@ class _CandidateDashboardTabState extends State<CandidateDashboardTab> {
         final item = _myUploads[i];
         final title = item['title'] ?? item['video_title'] ?? 'Video Recording';
         final timeStr = item['date'] ?? item['time'] ?? 'Just now';
-        final statusStr = item['status']?.toString() ?? 'Pending QC';
-        final isApproved = statusStr.toLowerCase().contains('approve');
-        final isRejected = statusStr.toLowerCase().contains('reject');
+        final statusStr = item['status']?.toString() ?? 'Waiting for QC';
+        final reason = item['reason'] ?? item['rejection_reason'] ?? item['rejectionReason'] ?? '';
 
         Color statusBg = const Color(0xFFFEF3C7);
         Color statusColor = const Color(0xFFD97706);
 
-        if (isApproved) {
+        if (statusStr.toLowerCase().contains('final approve') || statusStr.toLowerCase() == 'approved') {
           statusBg = const Color(0xFFDCFCE7);
           statusColor = const Color(0xFF166534);
-        } else if (isRejected) {
+        } else if (statusStr.toLowerCase().contains('admin reject')) {
           statusBg = const Color(0xFFFEE2E2);
           statusColor = const Color(0xFF991B1B);
+        } else if (statusStr.toLowerCase().contains('qc reject')) {
+          statusBg = const Color(0xFFFEE2E2);
+          statusColor = const Color(0xFF991B1B);
+        } else if (statusStr.toLowerCase().contains('admin')) {
+          statusBg = const Color(0xFFEDE9FE);
+          statusColor = const Color(0xFF6D28D9);
+        } else {
+          statusBg = const Color(0xFFFEF3C7);
+          statusColor = const Color(0xFFD97706);
         }
 
         return Container(
@@ -537,62 +545,96 @@ class _CandidateDashboardTabState extends State<CandidateDashboardTab> {
               ),
             ],
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  color: const Color(0xFFEFF6FF),
-                  child: const Icon(
-                    Icons.videocam_rounded,
-                    color: Color(0xFF2563EB),
-                    size: 24,
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      color: const Color(0xFFEFF6FF),
+                      child: const Icon(
+                        Icons.videocam_rounded,
+                        color: Color(0xFF2563EB),
+                        size: 24,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          timeStr,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: statusBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      statusStr,
+                      style: TextStyle(
+                        fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A),
+                        color: statusColor,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      timeStr,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: statusBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  statusStr,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: statusColor,
+              if (reason.toString().isNotEmpty && (statusStr.toLowerCase().contains('reject'))) ...[
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF1F2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFECDD3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.info_outline, size: 14, color: Color(0xFFE11D48)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Rejection Reason: $reason',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFBE123C),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         );

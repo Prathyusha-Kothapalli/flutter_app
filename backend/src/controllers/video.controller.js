@@ -154,15 +154,26 @@ class VideoController {
     try {
       let { candidate_id, vendor_id, vendor_code, status, page, limit } = req.query;
 
-      // STRICT JWT CANDIDATE / VENDOR IDENTIFICATION:
+      // STRICT JWT CANDIDATE / VENDOR IDENTIFICATION & ISOLATION:
       if (req.user && req.user.role === 'candidate') {
         candidate_id = req.user.id;
+        vendor_id = null;
+        vendor_code = null;
       } else if (req.user && req.user.role === 'vendor') {
         vendor_id = req.user.vendor_id || req.user.id;
-        vendor_code = req.user.vendor_code || vendor_code;
+        vendor_code = req.user.vendor_code || null;
       }
 
-      const result = await videoService.getAllVideos({ candidate_id, vendor_id, vendor_code, status, page, limit });
+      const result = await videoService.getAllVideos({
+        candidate_id,
+        vendor_id,
+        vendor_code,
+        status,
+        page,
+        limit,
+        userRole: req.user?.role,
+        userId: req.user?.id,
+      });
 
       return res.status(200).json({
         status: 'success',
@@ -179,6 +190,35 @@ class VideoController {
       const { id } = req.params;
       const video = await videoService.getVideoById(id);
 
+      if (!video) {
+        return res.status(404).json({
+          status: 'error',
+          statusCode: 404,
+          message: 'Video not found',
+        });
+      }
+
+      // Security check: Candidate isolation
+      if (req.user && req.user.role === 'candidate' && video.candidate_id !== req.user.id) {
+        return res.status(403).json({
+          status: 'error',
+          statusCode: 403,
+          message: 'Access denied. You cannot view another candidate\'s video.',
+        });
+      }
+
+      // Security check: Vendor isolation
+      if (req.user && req.user.role === 'vendor') {
+        const loggedVendorId = req.user.vendor_id || req.user.id;
+        if (video.vendor_id !== loggedVendorId) {
+          return res.status(403).json({
+            status: 'error',
+            statusCode: 403,
+            message: 'Access denied. You cannot view another vendor\'s candidate video.',
+          });
+        }
+      }
+
       // FIX #10: Log video view access
       SecurityLogger.log(SECURITY_EVENTS.FILE_VIEW, {
         ip: req.ip,
@@ -194,6 +234,13 @@ class VideoController {
         data: video,
       });
     } catch (error) {
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({
+          status: 'error',
+          statusCode: error.statusCode,
+          message: error.message,
+        });
+      }
       next(error);
     }
   }
@@ -228,12 +275,15 @@ class VideoController {
       }
 
       // Vendors can only delete videos from their candidates
-      if (userRole === 'vendor' && video.vendor_id !== userId) {
-        return res.status(403).json({
-          status: 'error',
-          statusCode: 403,
-          message: 'Access denied. You can only delete videos from your candidates.',
-        });
+      if (userRole === 'vendor') {
+        const loggedVendorId = req.user?.vendor_id || userId;
+        if (video.vendor_id !== loggedVendorId) {
+          return res.status(403).json({
+            status: 'error',
+            statusCode: 403,
+            message: 'Access denied. You can only delete videos from your candidates.',
+          });
+        }
       }
 
       const result = await videoService.deleteVideo(id);
@@ -263,11 +313,13 @@ class VideoController {
   async updateVideoStatus(req, res, next) {
     try {
       const { id } = req.params;
-      const { status, rejection_reason, reject_reason, reason } = req.body;
-      const rejReason = rejection_reason || reject_reason || reason || '';
+      const { status, rejection_reason, reject_reason, reason, comments } = req.body;
+      const rejReason = rejection_reason || reject_reason || reason || comments || '';
       const actorId = req.user?.id;
+      const actorRole = req.user?.role || 'admin';
+      const actorName = req.user?.name || req.user?.full_name || 'Reviewer';
 
-      const video = await videoService.updateVideoStatus(id, status, rejReason, actorId);
+      const video = await videoService.updateVideoStatus(id, status, rejReason, actorId, actorRole, actorName, { comments });
 
       return res.status(200).json({
         status: 'success',
@@ -275,6 +327,13 @@ class VideoController {
         data: video,
       });
     } catch (error) {
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({
+          status: 'error',
+          statusCode: error.statusCode,
+          message: error.message,
+        });
+      }
       next(error);
     }
   }

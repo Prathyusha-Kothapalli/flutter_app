@@ -117,16 +117,20 @@ class CandidateVideoStore {
           if (id.isNotEmpty && processedVideoIds.contains(id)) continue;
           if (id.isNotEmpty) processedVideoIds.add(id);
 
-          final st = (vid['status'] ?? 'PENDING_QC').toString().toUpperCase().replaceAll(' ', '_');
-          String statusText = 'Pending QC';
-          if (st == 'ASSIGNED_QC' || st == 'IN_REVIEW') {
-            statusText = 'Assigned to QC';
-          } else if (st == 'QC_APPROVED') {
-            statusText = 'QC Approved';
-          } else if (st == 'APPROVED' || st == 'FINAL_APPROVED') {
-            statusText = 'Final Approved 🎉';
+          final st = (vid['status'] ?? 'QC_PENDING').toString().toUpperCase().replaceAll(' ', '_');
+          String statusText = 'Waiting for QC';
+          if (st == 'QC_PENDING' || st == 'PENDING_QC' || st == 'PENDING' || st == 'UPLOADED' || st == 'ASSIGNED_QC' || st == 'IN_REVIEW') {
+            statusText = 'Waiting for QC';
+          } else if (st == 'QC_REJECTED') {
+            statusText = 'QC Rejected';
+          } else if (st == 'ADMIN_PENDING' || st == 'QC_APPROVED' || st == 'PENDING_ADMIN_REVIEW') {
+            statusText = 'Waiting for Admin';
+          } else if (st == 'ADMIN_REJECTED' || st == 'REJECTED') {
+            statusText = 'Admin Rejected';
+          } else if (st == 'FINAL_APPROVED' || st == 'APPROVED') {
+            statusText = 'Final Approved';
           } else if (st.contains('REJECT')) {
-            statusText = 'Rejected';
+            statusText = 'QC Rejected';
           }
 
           final durSec = parseDurationSeconds(vid['duration']);

@@ -11,14 +11,14 @@ class QCReviewController {
    */
   async createQCReview(req, res, next) {
     try {
-      const { video_id, status, reject_reason, reviewer_name, reviewer_id, audio_score, lighting_score, framing_score, env_match_score } = req.body;
+      const { video_id, status, reject_reason, reviewer_name, reviewer_id, audio_score, lighting_score, framing_score, env_match_score, qc_comments } = req.body;
 
       const result = await qcReviewService.createQCReview({
         video_id,
         status,
-        reject_reason,
-        reviewer_name,
-        reviewer_id,
+        reject_reason: reject_reason || qc_comments,
+        reviewer_name: reviewer_name || req.user?.name || req.user?.full_name || 'QC Specialist',
+        reviewer_id: reviewer_id || req.user?.id,
         audio_score,
         lighting_score,
         framing_score,
@@ -27,10 +27,17 @@ class QCReviewController {
 
       return res.status(201).json({
         status: 'success',
-        message: `Video QC review submitted. Video status updated to "${status}"`,
+        message: `Video QC review submitted. Video status updated to "${result.video_status || status}"`,
         data: result,
       });
     } catch (error) {
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({
+          status: 'error',
+          statusCode: error.statusCode,
+          message: error.message,
+        });
+      }
       next(error);
     }
   }

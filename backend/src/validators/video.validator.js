@@ -5,10 +5,11 @@
 const { isValidUUID } = require('../utils/uuid');
 
 const ALLOWED_STATUSES = [
+  'QC_PENDING', 'QC_REJECTED', 'ADMIN_PENDING', 'ADMIN_REJECTED', 'FINAL_APPROVED',
   'pending', 'uploaded', 'under_review',
   'pending_qc', 'assigned_qc', 'in_review',
   'qc_approved', 'qc_rejected',
-  'approved', 'rejected',
+  'approved', 'rejected', 'deleted',
 ];
 
 function validateVideoIdParam(req, res, next) {

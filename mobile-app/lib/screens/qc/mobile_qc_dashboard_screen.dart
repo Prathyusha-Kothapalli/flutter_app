@@ -319,12 +319,8 @@ class _MobileQCDashboardScreenState extends State<MobileQCDashboardScreen> {
         }),
       ).timeout(const Duration(seconds: 3));
 
-      // Call physical file delete API when video is rejected
-      if (!isApproved) {
-        final headers = await AuthService.getAuthHeaders();
-        final delUrl = Uri.parse('${ApiConstants.baseUrl}/api/v1/videos/$videoId');
-        await http.delete(delUrl, headers: headers).timeout(const Duration(seconds: 3));
-      }
+      // In the review workflow, rejected videos are preserved with their rejection reason
+      // and must NOT be deleted.
     } catch (e) {
       debugPrint('Failed to submit QC review scores: $e');
     }

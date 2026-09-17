@@ -142,6 +142,7 @@ class AuthService {
         email: userRow.email,
         name: userRow.full_name,
         role: userRole,
+        vendor_id: userRow.vendor_id || (userRole === 'vendor' ? userRow.id : null),
         vendor_code: userRow.vendor_code || null,
       },
       config.jwt.secret,
@@ -322,6 +323,8 @@ class AuthService {
         email: candidateRow.email,
         name: candidateRow.full_name,
         role: 'candidate',
+        vendor_id: candidateRow.vendor_id || vendorId || null,
+        vendor_code: cleanVendorCode || null,
       },
       config.jwt.secret,
       { expiresIn: config.jwt.expiresIn }
