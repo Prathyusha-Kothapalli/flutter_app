@@ -399,7 +399,12 @@ class VideoService {
           OR v.candidate_id::text = $${params.length}::text
           OR c.id = $${params.length}
           OR c.id::text = $${params.length}::text
-          OR LOWER(c.email) = LOWER($${params.length})
+          OR LOWER(c.email) = LOWER($${params.length}::text)
+          OR v.candidate_id IN (
+            SELECT id FROM users WHERE id = $${params.length} OR id::text = $${params.length}::text OR LOWER(email) = LOWER($${params.length}::text)
+            UNION
+            SELECT id FROM candidates WHERE id = $${params.length} OR id::text = $${params.length}::text OR LOWER(email) = LOWER($${params.length}::text)
+          )
         )`;
         countQuery += candCond;
         selectQuery += candCond;

@@ -102,135 +102,130 @@ class CandidateVideoStore {
       final currentUserId = session?['id'] ?? '';
       final cacheKey = currentUserId.isNotEmpty ? 'candidate_local_uploads_$currentUserId' : 'candidate_local_uploads';
 
-      // 1. Fetch from PostgreSQL REST API strictly scoped to authenticated candidate
-      final queryParam = currentUserId.isNotEmpty ? '?candidate_id=$currentUserId' : '';
-      final url = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.apiVersion}/videos$queryParam');
-      final res = await http.get(url, headers: headers).timeout(const Duration(seconds: 8));
-
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body);
-        final List items = body['data'] is List ? body['data'] : (body['data']?['items'] ?? []);
-        debugPrint('[CandidateVideoStore] ✅ Backend API fetch success for Candidate: "$currentUserId". Received ${items.length} videos.');
-
-        for (var vid in items) {
-          final id = vid['id']?.toString() ?? '';
-          if (id.isNotEmpty && processedVideoIds.contains(id)) continue;
-          if (id.isNotEmpty) processedVideoIds.add(id);
-
-          final st = (vid['status'] ?? 'QC_PENDING').toString().toUpperCase().replaceAll(' ', '_');
-          String statusText = 'Waiting for QC';
-          if (st == 'QC_PENDING' || st == 'PENDING_QC' || st == 'PENDING' || st == 'UPLOADED' || st == 'ASSIGNED_QC' || st == 'IN_REVIEW') {
-            statusText = 'Waiting for QC';
-          } else if (st == 'QC_REJECTED') {
-            statusText = 'QC Rejected';
-          } else if (st == 'ADMIN_PENDING' || st == 'QC_APPROVED' || st == 'PENDING_ADMIN_REVIEW') {
-            statusText = 'Waiting for Admin';
-          } else if (st == 'ADMIN_REJECTED' || st == 'REJECTED') {
-            statusText = 'Admin Rejected';
-          } else if (st == 'FINAL_APPROVED' || st == 'APPROVED') {
-            statusText = 'Final Approved';
-          } else if (st.contains('REJECT')) {
-            statusText = 'QC Rejected';
-          }
-
-          final durSec = parseDurationSeconds(vid['duration']);
-
-          allVideos.add({
-            'id': id.isNotEmpty ? id : 'VID-${allVideos.length + 1}',
-            'title': vid['title'] ?? 'Dataset Video Recording',
-            'env': vid['environment_tag'] ?? 'Kitchen',
-            'status': statusText,
-            'date': vid['recording_date'] != null ? 'Uploaded' : 'Today, Just Now',
-            'size': 'N/A',
-            'duration': formatDurationString(durSec),
-            'durationSeconds': durSec,
-            'reason': vid['rejection_reason'] ?? '',
-            'candidateId': currentUserId,
-          });
-        }
-
-        // Update local device account-specific cache with authenticated server data
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(cacheKey, jsonEncode(allVideos));
-        } catch (e) {
-          debugPrint('[CandidateVideoStore] ⚠️ Failed to update account cache: $e');
-        }
-        return allVideos;
-      } else if (res.statusCode == 401 || res.statusCode == 403) {
-        debugPrint('[CandidateVideoStore] 🔒 Auth Error (HTTP ${res.statusCode}): Invalid/Expired JWT Token. ${res.body}');
-      } else {
-        debugPrint('[CandidateVideoStore] ❌ Server/DB Error (HTTP ${res.statusCode}): ${res.body}');
-      }
-    } catch (e) {
-      debugPrint('[CandidateVideoStore] 🚨 API Network Exception: $e');
-    }
-
-    // 2. Load from SharedPreferences candidate-account-specific local cache ONLY as offline fallback
-    try {
-      final session = await AuthService.restoreSession();
-      final currentUserId = session?['id'] ?? '';
-      final cacheKey = currentUserId.isNotEmpty ? 'candidate_local_uploads_$currentUserId' : 'candidate_local_uploads';
-
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(cacheKey);
-      if (raw != null) {
-        final List<dynamic> list = jsonDecode(raw);
-        for (var item in list) {
-          final candId = (item['candidateId'] ?? item['candidate_id'] ?? '').toString();
-          if (currentUserId.isNotEmpty && candId.isNotEmpty && candId != currentUserId) {
-            continue; // Prevent videos from another candidate account appearing
-          }
-
-          final id = item['id']?.toString() ?? '';
-          if (id.isNotEmpty && processedVideoIds.contains(id)) continue;
-          if (id.isNotEmpty) processedVideoIds.add(id);
-
-          final durSec = parseDurationSeconds(item['durationSeconds'] ?? item['duration']);
-
-          allVideos.add({
-            'id': id.isNotEmpty ? id : 'VID-${allVideos.length + 1}',
-            'title': item['title'] ?? 'Uploaded Video Recording',
-            'env': item['env'] ?? 'Kitchen',
-            'status': item['status'] ?? 'Pending QC',
-            'date': item['date'] ?? 'Today, Just Now',
-            'size': item['size'] ?? 'N/A',
-            'duration': formatDurationString(durSec),
-            'durationSeconds': durSec,
-            'reason': item['reason'] ?? '',
-            'candidateId': currentUserId,
-          });
-        }
-      }
-    } catch (_) {}
-
-    // 3. Fetch from Web localStorage platform_qc_submissions
-    if (kIsWeb) {
+      // 1. Fetch from PostgreSQL REST API
       try {
-        final raw = web.localStorageGet('platform_qc_submissions');
-        if (raw != null) {
-          final List<dynamic> list = jsonDecode(raw);
-          for (var item in list) {
-            final id = item['id']?.toString() ?? '';
+        final queryParam = currentUserId.isNotEmpty ? '?candidate_id=$currentUserId' : '';
+        final url = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.apiVersion}/videos$queryParam');
+        final res = await http.get(url, headers: headers).timeout(const Duration(seconds: 6));
+
+        if (res.statusCode == 200) {
+          final body = jsonDecode(res.body);
+          final List items = body['data'] is List ? body['data'] : (body['data']?['items'] ?? []);
+          debugPrint('[CandidateVideoStore] ✅ Backend API returned ${items.length} videos.');
+
+          for (var vid in items) {
+            final id = vid['id']?.toString() ?? '';
             if (id.isNotEmpty && processedVideoIds.contains(id)) continue;
             if (id.isNotEmpty) processedVideoIds.add(id);
 
-            final durSec = parseDurationSeconds(item['durationSeconds'] ?? item['duration']);
+            final st = (vid['status'] ?? 'QC_PENDING').toString().toUpperCase().replaceAll(' ', '_');
+            String statusText = 'Pending QC';
+            if (st == 'FINAL_APPROVED' || st == 'APPROVED') {
+              statusText = 'Approved';
+            } else if (st.contains('REJECT')) {
+              statusText = 'Rejected';
+            } else {
+              statusText = 'Pending QC';
+            }
+
+            final durSec = parseDurationSeconds(vid['duration']);
 
             allVideos.add({
               'id': id.isNotEmpty ? id : 'VID-${allVideos.length + 1}',
-              'title': item['title'] ?? 'Uploaded Video',
-              'env': item['env'] ?? 'Kitchen',
-              'status': item['status'] == 'Pending' ? 'Pending QC' : (item['status'] ?? 'Approved'),
-              'date': item['time'] ?? 'Just Now',
-              'size': item['size'] ?? 'N/A',
+              'title': vid['title'] ?? 'Dataset Video Recording',
+              'env': vid['environment_tag'] ?? 'Kitchen',
+              'status': statusText,
+              'date': vid['recording_date'] != null ? 'Uploaded' : 'Today, Just Now',
+              'size': 'N/A',
               'duration': formatDurationString(durSec),
               'durationSeconds': durSec,
-              'reason': item['rejectionReason'] ?? '',
+              'reason': vid['rejection_reason'] ?? '',
+              'candidateId': currentUserId,
             });
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[CandidateVideoStore] API fetch notice: $e');
+      }
+
+      // 2. ALWAYS merge with SharedPreferences local storage (both account-specific and generic keys)
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final keysToCheck = [cacheKey, 'candidate_local_uploads', 'candidate_videos'];
+        for (var key in keysToCheck) {
+          final raw = prefs.getString(key);
+          if (raw != null) {
+            final List<dynamic> list = jsonDecode(raw);
+            for (var item in list) {
+              final id = item['id']?.toString() ?? '';
+              if (id.isNotEmpty && processedVideoIds.contains(id)) continue;
+              if (id.isNotEmpty) processedVideoIds.add(id);
+
+              final durSec = parseDurationSeconds(item['durationSeconds'] ?? item['duration']);
+              final rawSt = (item['status'] ?? 'Pending QC').toString();
+              String statusText = 'Pending QC';
+              if (rawSt.toLowerCase().contains('approve')) {
+                statusText = 'Approved';
+              } else if (rawSt.toLowerCase().contains('reject')) {
+                statusText = 'Rejected';
+              } else {
+                statusText = 'Pending QC';
+              }
+
+              allVideos.add({
+                'id': id.isNotEmpty ? id : 'VID-${allVideos.length + 1}',
+                'title': item['title'] ?? 'Uploaded Video Recording',
+                'env': item['env'] ?? 'Kitchen',
+                'status': statusText,
+                'date': item['date'] ?? 'Today, Just Now',
+                'size': item['size'] ?? 'N/A',
+                'duration': formatDurationString(durSec),
+                'durationSeconds': durSec,
+                'reason': item['reason'] ?? '',
+                'candidateId': currentUserId,
+              });
+            }
+          }
+        }
+
+        // Cache unified list to prevent blank screens
+        if (allVideos.isNotEmpty) {
+          await prefs.setString(cacheKey, jsonEncode(allVideos));
+        }
+      } catch (e) {
+        debugPrint('[CandidateVideoStore] Local cache parse error: $e');
+      }
+
+      // 3. Merge Web localStorage if on Web platform
+      if (kIsWeb) {
+        try {
+          final raw = web.localStorageGet('platform_qc_submissions');
+          if (raw != null) {
+            final List<dynamic> list = jsonDecode(raw);
+            for (var item in list) {
+              final id = item['id']?.toString() ?? '';
+              if (id.isNotEmpty && processedVideoIds.contains(id)) continue;
+              if (id.isNotEmpty) processedVideoIds.add(id);
+
+              final durSec = parseDurationSeconds(item['durationSeconds'] ?? item['duration']);
+
+              allVideos.add({
+                'id': id.isNotEmpty ? id : 'VID-${allVideos.length + 1}',
+                'title': item['title'] ?? 'Uploaded Video',
+                'env': item['env'] ?? 'Kitchen',
+                'status': item['status'] == 'Pending' ? 'Pending QC' : (item['status'] ?? 'Approved'),
+                'date': item['time'] ?? 'Just Now',
+                'size': item['size'] ?? 'N/A',
+                'duration': formatDurationString(durSec),
+                'durationSeconds': durSec,
+                'reason': item['rejectionReason'] ?? '',
+              });
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('[CandidateVideoStore] Unexpected error: $e');
     }
 
     return allVideos;

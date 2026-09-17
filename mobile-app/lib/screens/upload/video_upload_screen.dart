@@ -37,6 +37,7 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
 
   // History of Uploads
   List<Map<String, dynamic>> _uploadsHistory = [];
+  bool _isLoadingHistory = true;
 
   @override
   void initState() {
@@ -73,15 +74,18 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
   }
 
   Future<void> _loadStoredHistory() async {
+    if (mounted) setState(() => _isLoadingHistory = true);
     try {
       final videos = await CandidateVideoStore.getUploadedVideos();
       if (mounted) {
         setState(() {
           _uploadsHistory = videos;
+          _isLoadingHistory = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading uploads history: $e');
+      if (mounted) setState(() => _isLoadingHistory = false);
     }
   }
 
@@ -414,7 +418,10 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
                             const Text('QC Approved', style: TextStyle(color: Colors.white70, fontSize: 12)),
                             const SizedBox(height: 2),
                             Text(
-                              '${_uploadsHistory.where((i) => i['status'] == 'Approved').length}',
+                              '${_uploadsHistory.where((i) {
+                                final st = (i['status'] ?? '').toString().toLowerCase();
+                                return st.contains('approve');
+                              }).length}',
                               style: const TextStyle(color: Color(0xFF34D399), fontSize: 26, fontWeight: FontWeight.bold),
                             ),
                           ],
@@ -425,7 +432,10 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
                             const Text('Pending QC', style: TextStyle(color: Colors.white70, fontSize: 12)),
                             const SizedBox(height: 2),
                             Text(
-                              '${_uploadsHistory.where((i) => i['status'] == 'Pending QC' || i['status'] == 'Pending').length}',
+                              '${_uploadsHistory.where((i) {
+                                final st = (i['status'] ?? '').toString().toLowerCase();
+                                return !st.contains('approve') && !st.contains('reject');
+                              }).length}',
                               style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 26, fontWeight: FontWeight.bold),
                             ),
                           ],
@@ -461,7 +471,15 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
               const SizedBox(height: 14),
 
               // All Uploads List Cards
-              if (_uploadsHistory.isEmpty)
+              if (_isLoadingHistory)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF2563EB)),
+                  ),
+                )
+              else if (_uploadsHistory.isEmpty)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
@@ -470,16 +488,16 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
-                  child: Column(
+                  child: const Column(
                     children: [
-                      const Icon(Icons.cloud_upload_outlined, size: 54, color: Color(0xFF94A3B8)),
-                      const SizedBox(height: 12),
-                      const Text(
+                      Icon(Icons.cloud_upload_outlined, size: 54, color: Color(0xFF94A3B8)),
+                      SizedBox(height: 12),
+                      Text(
                         'No Uploaded Videos Yet',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF0F172A)),
                       ),
-                      const SizedBox(height: 6),
-                      const Text(
+                      SizedBox(height: 6),
+                      Text(
                         'Record new dataset video clips using your camera and upload them here.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
