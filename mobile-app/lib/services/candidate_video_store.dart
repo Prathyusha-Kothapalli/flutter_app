@@ -78,9 +78,43 @@ class CandidateVideoStore {
       });
 
       await prefs.setString(cacheKey, jsonEncode(list));
+      if (cacheKey != 'candidate_local_uploads') {
+        final globalRaw = prefs.getString('candidate_local_uploads');
+        List<dynamic> globalList = [];
+        if (globalRaw != null) {
+          try {
+            globalList = jsonDecode(globalRaw);
+          } catch (_) {}
+        }
+        globalList.removeWhere((item) => (item['id']?.toString() ?? '') == id);
+        globalList.insert(0, list.first);
+        await prefs.setString('candidate_local_uploads', jsonEncode(globalList));
+      }
 
       if (kIsWeb) {
         try {
+          final rawQc = web.localStorageGet('platform_qc_submissions');
+          List<dynamic> qcList = [];
+          if (rawQc != null) {
+            try {
+              qcList = jsonDecode(rawQc);
+            } catch (_) {}
+          }
+          qcList.removeWhere((item) => (item['id']?.toString() ?? item['raw_id']?.toString() ?? '') == id);
+          qcList.insert(0, {
+            'id': id,
+            'ticket_code': 'TKT-${id.length > 8 ? id.substring(0, 8) : id}',
+            'title': list.first['title'],
+            'candidateName': 'Candidate',
+            'vendor': 'Vendor',
+            'duration': formatDurationString(durSec),
+            'durationSeconds': durSec,
+            'env': list.first['env'],
+            'status': 'Pending',
+            'assignedTo': 'QC Specialist',
+          });
+          web.localStorageSet('platform_qc_submissions', jsonEncode(qcList));
+
           final bc = web.BroadcastChannelStub('platform_realtime_channel');
           bc.postMessage(jsonEncode({'type': 'VIDEO_UPLOADED', 'payload': list}));
           bc.close();

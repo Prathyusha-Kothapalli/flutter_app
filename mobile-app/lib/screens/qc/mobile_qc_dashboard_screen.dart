@@ -257,44 +257,53 @@ class _MobileQCDashboardScreenState extends State<MobileQCDashboardScreen> {
       // Read SharedPreferences candidate_local_uploads for mobile & native updates
       try {
         final prefs = await SharedPreferences.getInstance();
-        final raw = prefs.getString('candidate_local_uploads');
-        if (raw != null) {
-          final List<dynamic> localList = jsonDecode(raw);
-          for (var item in localList) {
-            final id = (item['id'] ?? '').toString();
-            if (id.isNotEmpty && processedIds.contains(id)) continue;
-            if (id.isNotEmpty) processedIds.add(id);
+        final allKeys = prefs.getKeys().where((k) => k.startsWith('candidate_local_uploads') || k == 'candidate_videos').toList();
+        if (!allKeys.contains('candidate_local_uploads')) {
+          allKeys.add('candidate_local_uploads');
+        }
 
-            final statusStr = (item['status'] ?? 'Pending QC').toString();
-            final st = statusStr.toLowerCase();
-            final assignedTo = item['assignedTo'] ?? item['assigned_to'] ?? item['assigned_qc'] ?? 'QC Specialist';
+        for (var cacheKey in allKeys) {
+          final raw = prefs.getString(cacheKey);
+          if (raw != null) {
+            try {
+              final List<dynamic> localList = jsonDecode(raw);
+              for (var item in localList) {
+                final id = (item['id'] ?? item['raw_id'] ?? '').toString();
+                if (id.isNotEmpty && processedIds.contains(id)) continue;
+                if (id.isNotEmpty) processedIds.add(id);
 
-            final fallbackCode = 'TKT-${processedIds.length + 1}';
-            final formattedTicket = {
-              'id': id.isNotEmpty ? id : fallbackCode,
-              'ticket_code': id.isNotEmpty ? id : fallbackCode,
-              'title': item['title'] ?? 'Candidate Video Recording',
-              'candidate_name': item['candidateName'] ?? item['candidate_name'] ?? 'Candidate',
-              'vendor_name': item['vendor'] ?? item['vendor_name'] ?? 'N/A',
-              'duration': CandidateVideoStore.formatDurationString(item['durationSeconds'] ?? item['duration']),
-              'environment_tag': item['env'] ?? item['environment_tag'] ?? 'Kitchen',
-              'status': st.contains('approve')
-                  ? 'qc_approved'
-                  : (st.contains('reject')
-                      ? 'qc_rejected'
-                      : (st.contains('review') ? 'in_review' : 'pending_qc')),
-              'assigned_to': assignedTo,
-            };
+                final statusStr = (item['status'] ?? 'Pending QC').toString();
+                final st = statusStr.toLowerCase();
+                final assignedTo = item['assignedTo'] ?? item['assigned_to'] ?? item['assigned_qc'] ?? 'QC Specialist';
 
-            if (st.contains('approve')) {
-              fetchedApproved.add(formattedTicket);
-            } else if (st.contains('reject')) {
-              fetchedRejected.add(formattedTicket);
-            } else if (st.contains('review')) {
-              fetchedInReview.add(formattedTicket);
-            } else {
-              fetchedPending.add(formattedTicket);
-            }
+                final fallbackCode = 'TKT-${processedIds.length + 1}';
+                final formattedTicket = {
+                  'id': id.isNotEmpty ? id : fallbackCode,
+                  'ticket_code': id.isNotEmpty ? id : fallbackCode,
+                  'title': item['title'] ?? 'Candidate Video Recording',
+                  'candidate_name': item['candidateName'] ?? item['candidate_name'] ?? 'Candidate',
+                  'vendor_name': item['vendor'] ?? item['vendor_name'] ?? 'N/A',
+                  'duration': CandidateVideoStore.formatDurationString(item['durationSeconds'] ?? item['duration']),
+                  'environment_tag': item['env'] ?? item['environment_tag'] ?? 'Kitchen',
+                  'status': st.contains('approve')
+                      ? 'qc_approved'
+                      : (st.contains('reject')
+                          ? 'qc_rejected'
+                          : (st.contains('review') ? 'in_review' : 'pending_qc')),
+                  'assigned_to': assignedTo,
+                };
+
+                if (st.contains('approve')) {
+                  fetchedApproved.add(formattedTicket);
+                } else if (st.contains('reject')) {
+                  fetchedRejected.add(formattedTicket);
+                } else if (st.contains('review')) {
+                  fetchedInReview.add(formattedTicket);
+                } else {
+                  fetchedPending.add(formattedTicket);
+                }
+              }
+            } catch (_) {}
           }
         }
       } catch (_) {}
@@ -413,17 +422,26 @@ class _MobileQCDashboardScreenState extends State<MobileQCDashboardScreen> {
     // Persist to SharedPreferences candidate_local_uploads for mobile & native sync
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('candidate_local_uploads');
-      if (raw != null) {
-        final List<dynamic> localList = jsonDecode(raw);
-        for (var loc in localList) {
-          final locId = (loc['id'] ?? loc['raw_id'] ?? '').toString();
-          if (locId == ticketId.toString() || locId == (item['video_id'] ?? item['id']).toString()) {
-            loc['status'] = isApproved ? 'QC Approved' : 'Rejected';
-            if (!isApproved) loc['reason'] = reason;
-          }
+      final allKeys = prefs.getKeys().where((k) => k.startsWith('candidate_local_uploads') || k == 'candidate_videos').toList();
+      if (!allKeys.contains('candidate_local_uploads')) {
+        allKeys.add('candidate_local_uploads');
+      }
+
+      for (var cacheKey in allKeys) {
+        final raw = prefs.getString(cacheKey);
+        if (raw != null) {
+          try {
+            final List<dynamic> localList = jsonDecode(raw);
+            for (var loc in localList) {
+              final locId = (loc['id'] ?? loc['raw_id'] ?? '').toString();
+              if (locId == ticketId.toString() || locId == (item['video_id'] ?? item['id']).toString()) {
+                loc['status'] = isApproved ? 'QC Approved' : 'Rejected';
+                if (!isApproved) loc['reason'] = reason;
+              }
+            }
+            await prefs.setString(cacheKey, jsonEncode(localList));
+          } catch (_) {}
         }
-        await prefs.setString('candidate_local_uploads', jsonEncode(localList));
       }
     } catch (_) {}
     // Save Candidate Notification on Web
