@@ -146,6 +146,57 @@ class _MobileQCDashboardScreenState extends State<MobileQCDashboardScreen> {
             }
           }
         }
+
+        // Also fetch any candidate uploaded videos directly from /api/v1/videos
+        try {
+          final videoUrl = Uri.parse('${ApiConstants.baseUrl}/api/v1/videos?limit=100');
+          final vRes = await http.get(videoUrl, headers: headers).timeout(const Duration(seconds: 8));
+          if (vRes.statusCode == 200) {
+            final vBody = jsonDecode(vRes.body);
+            final vList = (vBody['data'] != null && vBody['data']['items'] is List)
+                ? vBody['data']['items']
+                : (vBody['data'] is List ? vBody['data'] : []);
+            for (var v in vList) {
+              final vId = (v['id'] ?? '').toString();
+              if (vId.isNotEmpty && !processedIds.contains(vId)) {
+                processedIds.add(vId);
+                final vStatus = (v['status'] ?? 'QC_PENDING').toString().toUpperCase();
+                final vMap = {
+                  'id': vId,
+                  'ticket_code': 'TKT-${vId.length > 8 ? vId.substring(0, 8) : vId}',
+                  'video_id': vId,
+                  'title': v['title'] ?? 'Candidate Dataset Video',
+                  'candidate_name': v['candidate_name'] ?? 'Candidate',
+                  'candidate_id': v['candidate_id'],
+                  'vendor_name': v['vendor_name'] ?? 'Vendor',
+                  'vendor_id': v['vendor_id'],
+                  'duration': CandidateVideoStore.formatDurationString(v['duration'] ?? 15),
+                  'environment_tag': v['environment_tag'] ?? 'Kitchen',
+                  'audio_score': v['audio_score'] ?? 0,
+                  'status': vStatus.contains('APPROVED')
+                      ? 'qc_approved'
+                      : (vStatus.contains('REJECT')
+                          ? 'qc_rejected'
+                          : (vStatus.contains('IN_REVIEW') ? 'in_review' : 'pending_qc')),
+                  'assigned_reviewer_id': v['assigned_reviewer_id'] ?? '',
+                  'assigned_reviewer_name': v['assigned_reviewer_name'] ?? 'QC Specialist',
+                  'local_path': v['local_path'] ?? '',
+                  's3_url': v['s3_url'] ?? '',
+                  'created_at': v['created_at'],
+                };
+                if (vMap['status'] == 'in_review') {
+                  fetchedInReview.add(vMap);
+                } else if (vMap['status'] == 'qc_approved') {
+                  fetchedApproved.add(vMap);
+                } else if (vMap['status'] == 'qc_rejected') {
+                  fetchedRejected.add(vMap);
+                } else {
+                  fetchedPending.add(vMap);
+                }
+              }
+            }
+          }
+        } catch (_) {}
       } catch (e) {
         debugPrint('QC Tickets API offline fallback: $e');
       }

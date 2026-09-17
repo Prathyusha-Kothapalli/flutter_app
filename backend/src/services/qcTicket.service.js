@@ -69,7 +69,7 @@ class QCTicketService {
             [reviewer.id, reviewer.full_name, ticket.id]
           );
           if (videoId) {
-            await db.query(`UPDATE videos SET status = 'assigned_qc', updated_at = NOW() WHERE id = $1`, [videoId]).catch(() => {});
+            await db.query(`UPDATE videos SET status = 'QC_PENDING', updated_at = NOW() WHERE id = $1`, [videoId]).catch(() => {});
           }
           ticket.assigned_reviewer_id = reviewer.id;
           ticket.assigned_reviewer_name = reviewer.full_name;
@@ -523,6 +523,9 @@ class QCTicketService {
             SELECT id FROM users WHERE id = $${params.length} OR id::text = $${params.length}::text OR LOWER(email) = LOWER($${params.length}::text)
           )
           OR LOWER(t.assigned_reviewer_name) LIKE LOWER($${params.length}::text)
+          OR t.assigned_reviewer_id IS NULL
+          OR LOWER(t.status) IN ('pending_qc', 'qc_pending', 'pending', 'assigned')
+          OR UPPER(v.status) IN ('QC_PENDING', 'ASSIGNED_QC')
         )`;
       }
 

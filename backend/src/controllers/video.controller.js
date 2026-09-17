@@ -103,17 +103,20 @@ class VideoController {
         file,
       });
 
-      // Step 2: Post-upload security processing (EXIF stripping + watermark)
+      // Step 2: Post-upload security processing (EXIF stripping + watermark) in background (non-blocking)
       if (VideoProcessor.isAvailable() && file.path) {
-        const processResult = await VideoProcessor.processVideo(file.path, {
-          vendorId: uploadedVideo.vendor_id || vendor_id,
-          candidateId: uploadedVideo.candidate_id || candidate_id,
-          videoId: uploadedVideo.id,
-        }).catch((e) => ({ success: false, error: e.message }));
-
-        if (!processResult.success) {
-          logger.warn('Video post-processing skipped', { error: processResult.error });
-        }
+        setImmediate(async () => {
+          try {
+            await VideoProcessor.processVideo(file.path, {
+              vendorId: uploadedVideo.vendor_id || vendor_id,
+              candidateId: uploadedVideo.candidate_id || candidate_id,
+              videoId: uploadedVideo.id,
+            });
+            logger.info('Background video processing completed', { videoId: uploadedVideo.id });
+          } catch (e) {
+            logger.warn('Background video post-processing skipped or failed', { error: e.message, videoId: uploadedVideo.id });
+          }
+        });
       }
 
       return res.status(200).json({
