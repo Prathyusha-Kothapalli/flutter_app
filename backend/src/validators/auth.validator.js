@@ -28,10 +28,10 @@ const validateLogin = (req, res, next) => {
     });
   }
 
-  if (password.trim().length < 6) {
+  if (password.trim().length < 3) {
     return res.status(400).json({
       status: 'error',
-      message: 'Password must be at least 6 characters long',
+      message: 'Password must be at least 3 characters long',
     });
   }
 

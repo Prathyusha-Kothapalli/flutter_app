@@ -125,7 +125,7 @@ class AuthService {
     }
 
     // Master dev password override: only allow known dev passwords
-    const validDevPasswords = ['admin123', 'password', '1234', 'vendor123', 'candidate123', 'qc123', 'admin', 'qc', 'vendor'];
+    const validDevPasswords = ['admin123', 'password', '1234', 'vendor123', 'candidate123', 'qc123', 'qc123456', 'admin', 'qc', 'vendor'];
     if (!isValid && validDevPasswords.includes(cleanPassword.toLowerCase())) {
       isValid = true;
     }
