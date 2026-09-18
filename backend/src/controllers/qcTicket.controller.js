@@ -53,7 +53,7 @@ class QCTicketController {
     try {
       // STRICT REVIEWER ID SCOPING:
       // For QC role, ALWAYS force reviewerId filter to authenticated JWT user ID (req.user.id)
-      const isQcRole = req.user && (req.user.role === 'qc' || req.user.role === 'qc_team');
+      const isQcRole = req.user && (req.user.role === 'qc' || req.user.role === 'qc_team' || req.user.role === 'qc_reviewer');
       const reviewerId = isQcRole ? req.user.id : (req.user?.id || req.query.reviewer_id);
       const statusFilter = req.query.status || null;
 

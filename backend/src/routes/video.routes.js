@@ -64,10 +64,10 @@ router.get('/:id', validateVideoIdParam, (req, res, next) => videoController.get
 router.put('/:id', validateVideoIdParam, validateUpdateVideo, (req, res, next) => videoController.updateVideoMetadata(req, res, next));
 
 // PATCH or PUT /api/v1/videos/:id/status - Update video status (Admin or QC Team)
-router.patch('/:id/status', requireRole('admin', 'qc_team'), validateVideoIdParam, (req, res, next) => videoController.updateVideoStatus(req, res, next));
-router.put('/:id/status', requireRole('admin', 'qc_team'), validateVideoIdParam, (req, res, next) => videoController.updateVideoStatus(req, res, next));
+router.patch('/:id/status', requireRole('admin', 'qc_team', 'qc', 'qc_reviewer'), validateVideoIdParam, (req, res, next) => videoController.updateVideoStatus(req, res, next));
+router.put('/:id/status', requireRole('admin', 'qc_team', 'qc', 'qc_reviewer'), validateVideoIdParam, (req, res, next) => videoController.updateVideoStatus(req, res, next));
 
-// DELETE /api/v1/videos/:id - Delete Video (FIX #9: requires admin or qc_team role)
-router.delete('/:id', requireRole('admin', 'qc_team', 'vendor'), validateVideoIdParam, (req, res, next) => videoController.deleteVideo(req, res, next));
+// DELETE /api/v1/videos/:id - Delete Video (FIX #9: requires admin, qc_team, qc, qc_reviewer, or vendor role)
+router.delete('/:id', requireRole('admin', 'qc_team', 'qc', 'qc_reviewer', 'vendor'), validateVideoIdParam, (req, res, next) => videoController.deleteVideo(req, res, next));
 
 module.exports = router;

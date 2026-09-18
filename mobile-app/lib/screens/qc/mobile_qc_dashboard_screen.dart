@@ -131,18 +131,38 @@ class _MobileQCDashboardScreenState extends State<MobileQCDashboardScreen> {
             for (var t in rawList) {
               final id = (t['id'] ?? t['ticket_code'] ?? '').toString();
               if (id.isNotEmpty) processedIds.add(id);
+              if (t['video_id'] != null && t['video_id'].toString().isNotEmpty) {
+                processedIds.add(t['video_id'].toString());
+              }
               final st = (t['status'] ?? 'pending_qc').toString().toLowerCase();
               final assignedTo = (t['assigned_reviewer_name'] ?? t['assignedTo'] ?? t['assigned_to'] ?? '').toString();
               final assignedReviewerId = (t['assigned_reviewer_id'] ?? t['assigned_reviewer'] ?? '').toString();
 
               final map = Map<String, dynamic>.from(t);
+              map['id'] = id;
+              map['ticket_code'] = t['ticket_code'] ?? 'TKT-${id.length > 8 ? id.substring(0, 8) : id}';
+              map['title'] = t['video_title'] ?? t['title'] ?? 'Candidate Dataset Video';
+              map['candidate_name'] = t['candidate_name'] ?? 'Candidate';
+              map['vendor_name'] = t['vendor_name'] ?? 'Vendor';
+              map['duration'] = CandidateVideoStore.formatDurationString(t['duration'] ?? 15);
+              map['environment_tag'] = t['environment_tag'] ?? 'Kitchen';
               map['assigned_reviewer_id'] = assignedReviewerId;
-              map['assigned_reviewer_name'] = assignedTo;
+              map['assigned_reviewer_name'] = assignedTo.isNotEmpty ? assignedTo : 'QC Specialist';
 
               if (st == 'in_review') fetchedInReview.add(map);
               else if (st == 'qc_approved' || st == 'approved') fetchedApproved.add(map);
               else if (st.contains('reject')) fetchedRejected.add(map);
               else fetchedPending.add(map);
+            }
+
+            if (body['statistics'] != null && body['statistics'] is Map) {
+              final stats = body['statistics'] as Map<String, dynamic>;
+              _statistics['total_assigned'] = stats['total_assigned'] ?? _statistics['total_assigned'];
+              _statistics['pending_review'] = stats['pending_review'] ?? _statistics['pending_review'];
+              _statistics['in_review'] = stats['in_review'] ?? _statistics['in_review'];
+              _statistics['approved'] = stats['approved'] ?? _statistics['approved'];
+              _statistics['rejected'] = stats['rejected'] ?? _statistics['rejected'];
+              _statistics['completed_today'] = stats['completed_today'] ?? _statistics['completed_today'];
             }
           }
         }

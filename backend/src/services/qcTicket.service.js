@@ -55,27 +55,18 @@ class QCTicketService {
 
       const ticket = res.rows[0];
 
-      // Auto-assign to least busy QC reviewer
+      // Auto-assign to active QC reviewer using Least Workload Algorithm
       try {
-        const reviewersRes = await db.query(`
-          SELECT id, full_name, email FROM users
-          WHERE role IN ('qc', 'qc_team', 'qc_reviewer') AND is_active = TRUE
-          ORDER BY created_at ASC
-        `);
-        if (reviewersRes.rows.length > 0) {
-          const reviewer = reviewersRes.rows[0];
-          await db.query(
-            `UPDATE qc_tickets SET assigned_reviewer_id = $1, assigned_reviewer_name = $2, status = 'assigned', assignment_time = NOW(), updated_at = NOW() WHERE id = $3`,
-            [reviewer.id, reviewer.full_name, ticket.id]
-          );
-          if (videoId) {
-            await db.query(`UPDATE videos SET status = 'QC_PENDING', updated_at = NOW() WHERE id = $1`, [videoId]).catch(() => {});
-          }
-          ticket.assigned_reviewer_id = reviewer.id;
-          ticket.assigned_reviewer_name = reviewer.full_name;
-          ticket.status = 'assigned';
+        const assignedList = await this.distributeTicketsEqually([ticket.id]);
+        if (assignedList && assignedList.length > 0) {
+          const assignedTicket = assignedList[0];
+          ticket.assigned_reviewer_id = assignedTicket.assigned_reviewer_id;
+          ticket.assigned_reviewer_name = assignedTicket.assigned_reviewer_name;
+          ticket.status = assignedTicket.status;
         }
-      } catch (_) {}
+      } catch (distErr) {
+        logger.warn('Auto-assignment during ticket creation warning:', { error: distErr.message });
+      }
 
       return ticket;
     } catch (err) {
@@ -264,7 +255,7 @@ class QCTicketService {
             const insRes = await client.query(`
               INSERT INTO qc_tickets (ticket_code, video_id, candidate_id, vendor_id, status, created_at, updated_at)
               VALUES ($1, $2, $3, $4, 'pending_qc', NOW(), NOW())
-              ON CONFLICT (video_id) DO UPDATE SET updated_at = NOW()
+              ON CONFLICT (ticket_code) DO UPDATE SET updated_at = NOW()
               RETURNING id
             `, [ticketCode, v.id, v.candidate_id, v.vendor_id]);
             if (insRes.rows[0]) ticketIds.push(insRes.rows[0].id);
@@ -300,13 +291,13 @@ class QCTicketService {
 
         const updateTicketQuery = `
           UPDATE qc_tickets
-          SET assigned_reviewer_id = $1,
+          SET assigned_reviewer_id = NULLIF($1::text, '')::uuid,
               assigned_reviewer_name = $2,
               status = 'assigned',
               assigned_at = NOW(),
               assignment_time = NOW(),
               updated_at = NOW()
-          WHERE id = $3 AND deleted_at IS NULL
+          WHERE id::text = $3::text AND deleted_at IS NULL
           RETURNING *
         `;
         const updatedTicketRes = await client.query(updateTicketQuery, [
@@ -319,22 +310,26 @@ class QCTicketService {
 
         if (ticket && ticket.video_id) {
           await client.query(
-            `UPDATE videos SET status = 'assigned_qc', updated_at = NOW() WHERE id = $1 OR id::text = $1`,
+            `UPDATE videos SET status = 'assigned_qc', updated_at = NOW() WHERE id::text = $1::text`,
             [ticket.video_id]
           );
         }
 
         if (ticket) {
-          await client.query(`
-            INSERT INTO ticket_assignments (
-              ticket_id, video_id, new_reviewer_id, new_reviewer_name, assignment_time, reason, performed_by
-            ) VALUES ($1, $2, $3, $4, NOW(), 'INITIAL_ASSIGNMENT', 'SYSTEM')
-          `, [
-            ticket.id,
-            ticket.video_id || `vid-${Date.now()}`,
-            selectedReviewer.reviewer_id,
-            selectedReviewer.reviewer_name,
-          ]).catch(() => {});
+          try {
+            await client.query(`
+              INSERT INTO ticket_assignments (
+                ticket_id, video_id, new_reviewer_id, new_reviewer_name, assignment_time, reason, performed_by
+              ) VALUES ($1::uuid, $2::text, $3::text, $4::text, NOW(), 'INITIAL_ASSIGNMENT', 'SYSTEM')
+            `, [
+              ticket.id,
+              ticket.video_id ? ticket.video_id.toString() : null,
+              selectedReviewer.reviewer_id ? selectedReviewer.reviewer_id.toString() : null,
+              selectedReviewer.reviewer_name,
+            ]);
+          } catch (assignErr) {
+            logger.warn('Failed to insert into ticket_assignments history:', assignErr.message);
+          }
         }
 
         workloadMap[selectedReviewer.reviewer_id] = (workloadMap[selectedReviewer.reviewer_id] || 0) + 1;
@@ -496,13 +491,44 @@ class QCTicketService {
    */
   async getMyAssignedTickets(reviewerId, filterStatus = null) {
     try {
+      // 1. Auto-backfill/sync qc_tickets for all candidate uploaded videos in the system
+      try {
+        await db.query(`
+          INSERT INTO qc_tickets (ticket_code, video_id, candidate_id, vendor_id, upload_date, status, created_at, updated_at)
+          SELECT 
+            'TKT-' || SUBSTRING(REPLACE(v.id::text, '-', ''), 1, 8),
+            v.id,
+            v.candidate_id,
+            v.vendor_id,
+            COALESCE(v.upload_date, v.created_at, NOW()),
+            CASE 
+              WHEN UPPER(v.status) IN ('QC_APPROVED', 'ADMIN_PENDING', 'FINAL_APPROVED') THEN 'qc_approved'
+              WHEN UPPER(v.status) IN ('QC_REJECTED', 'ADMIN_REJECTED') THEN 'qc_rejected'
+              WHEN UPPER(v.status) = 'IN_REVIEW' THEN 'in_review'
+              ELSE 'pending_qc'
+            END,
+            COALESCE(v.created_at, NOW()),
+            COALESCE(v.updated_at, NOW())
+          FROM videos v
+          WHERE v.deleted_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM qc_tickets t WHERE t.video_id = v.id AND t.deleted_at IS NULL
+            )
+        `);
+        // Auto-distribute any unassigned tickets using Least Workload algorithm
+        await this.distributeTicketsEqually().catch(() => {});
+      } catch (syncErr) {
+        logger.warn('Error auto-syncing qc_tickets from videos:', { error: syncErr.message });
+      }
+
       // Update activity timestamp on fetch
       await this.updateReviewerActivity(reviewerId, 'dashboard_view');
 
       let queryText = `
-        SELECT t.id, t.ticket_code, t.video_id, v.title AS video_title,
+        SELECT t.id, t.ticket_code, t.video_id, v.title AS video_title, v.title,
                c.full_name AS candidate_name, ven.company_name AS vendor_name,
                t.project_id, v.environment_tag, v.duration, t.upload_date,
+               v.local_path, v.s3_url,
                t.status, t.assigned_reviewer_id, t.assigned_reviewer_name, t.assignment_time
         FROM qc_tickets t
         LEFT JOIN videos v ON t.video_id = v.id
@@ -515,17 +541,16 @@ class QCTicketService {
       if (reviewerId) {
         params.push(reviewerId);
         queryText += ` AND (
-          t.assigned_reviewer_id = $${params.length}
-          OR t.assigned_reviewer_id::text = $${params.length}::text
+          t.assigned_reviewer_id::text = $${params.length}::text
           OR t.assigned_reviewer_id IN (
-            SELECT reviewer_id FROM reviewer_activity WHERE reviewer_id = $${params.length} OR reviewer_id::text = $${params.length}::text OR LOWER(reviewer_email) = LOWER($${params.length}::text)
+            SELECT reviewer_id FROM reviewer_activity WHERE reviewer_id::text = $${params.length}::text OR LOWER(reviewer_email) = LOWER($${params.length}::text)
             UNION
-            SELECT id FROM users WHERE id = $${params.length} OR id::text = $${params.length}::text OR LOWER(email) = LOWER($${params.length}::text)
+            SELECT id FROM users WHERE id::text = $${params.length}::text OR LOWER(email) = LOWER($${params.length}::text)
           )
           OR LOWER(t.assigned_reviewer_name) LIKE LOWER($${params.length}::text)
           OR t.assigned_reviewer_id IS NULL
-          OR LOWER(t.status) IN ('pending_qc', 'qc_pending', 'pending', 'assigned')
-          OR UPPER(v.status) IN ('QC_PENDING', 'ASSIGNED_QC')
+          OR LOWER(t.status) IN ('pending_qc', 'qc_pending', 'pending', 'assigned', 'unassigned')
+          OR UPPER(v.status) IN ('QC_PENDING', 'ASSIGNED_QC', 'PENDING')
         )`;
       }
 
@@ -534,46 +559,46 @@ class QCTicketService {
         queryText += ` AND t.status = $${params.length}`;
       }
 
-      queryText += ` ORDER BY t.assignment_time DESC`;
+      queryText += ` ORDER BY t.created_at DESC`;
 
       const res = await db.query(queryText, params);
       const tickets = res.rows;
 
-      // Calculate reviewer statistics
+      // Calculate global reviewer statistics
       const statsQuery = `
         SELECT
           COUNT(*) AS total_assigned,
-          COUNT(*) FILTER (WHERE LOWER(status) IN ('assigned', 'pending_qc', 'pending')) AS pending_review,
+          COUNT(*) FILTER (WHERE LOWER(status) IN ('assigned', 'pending_qc', 'pending', 'qc_pending', 'unassigned')) AS pending_review,
           COUNT(*) FILTER (WHERE LOWER(status) = 'in_review') AS in_review,
           COUNT(*) FILTER (WHERE LOWER(status) IN ('qc_approved', 'approved')) AS approved,
           COUNT(*) FILTER (WHERE LOWER(status) LIKE '%reject%') AS rejected,
           COUNT(*) FILTER (WHERE DATE(updated_at) = CURRENT_DATE AND LOWER(status) IN ('qc_approved', 'qc_rejected', 'approved', 'rejected')) AS completed_today
         FROM qc_tickets
         WHERE deleted_at IS NULL
-          AND (
-            assigned_reviewer_id = $1
-            OR assigned_reviewer_id::text = $1::text
-            OR assigned_reviewer_id IN (
-              SELECT id FROM users WHERE id = $1 OR id::text = $1::text OR LOWER(email) = LOWER($1::text)
-              UNION
-              SELECT reviewer_id FROM reviewer_activity WHERE reviewer_id = $1 OR reviewer_id::text = $1::text OR LOWER(reviewer_email) = LOWER($1::text)
-            )
-          )
       `;
 
-      const statsRes = await db.query(statsQuery, [reviewerId || '30000000-0000-4000-8000-000000000001']).catch(() => ({
+      const statsRes = await db.query(statsQuery).catch(() => ({
         rows: [{ total_assigned: tickets.length, pending_review: tickets.length, in_review: 0, approved: 0, rejected: 0, completed_today: 0 }],
       }));
 
+      const statData = statsRes.rows[0] || {
+        total_assigned: tickets.length,
+        pending_review: tickets.length,
+        in_review: 0,
+        approved: 0,
+        rejected: 0,
+        completed_today: 0,
+      };
+
       return {
         tickets,
-        statistics: statsRes.rows[0] || {
-          total_assigned: tickets.length,
-          pending_review: tickets.length,
-          in_review: 0,
-          approved: 1,
-          rejected: 0,
-          completed_today: 1,
+        statistics: {
+          total_assigned: parseInt(statData.total_assigned || tickets.length, 10),
+          pending_review: parseInt(statData.pending_review || 0, 10),
+          in_review: parseInt(statData.in_review || 0, 10),
+          approved: parseInt(statData.approved || 0, 10),
+          rejected: parseInt(statData.rejected || 0, 10),
+          completed_today: parseInt(statData.completed_today || 0, 10),
         },
       };
     } catch (err) {
