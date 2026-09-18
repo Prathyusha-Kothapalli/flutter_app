@@ -216,12 +216,17 @@ class AdminService {
       for (let i = 0; i < videos.length; i++) {
         const video = videos[i];
         const assignedQC = qcMembers[i % qcMembers.length];
+        const ticketCode = `TKT-${Math.floor(10000 + Math.random() * 90000)}`;
 
         await db.query(`
-          INSERT INTO qc_tickets (video_id, candidate_id, vendor_id, assigned_reviewer_id, assigned_reviewer_name, status, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, 'assigned', NOW(), NOW())
-          ON CONFLICT (video_id) DO UPDATE SET assigned_reviewer_id = $4, assigned_reviewer_name = $5, status = 'assigned', updated_at = NOW()
-        `, [video.id, video.candidate_id || null, video.vendor_id || null, assignedQC.id, assignedQC.full_name || 'QC Specialist']).catch(() => {});
+          INSERT INTO qc_tickets (ticket_code, video_id, candidate_id, vendor_id, assigned_reviewer_id, assigned_reviewer_name, status, created_at, updated_at)
+          VALUES ($1, $2::uuid, NULLIF($3::text, '')::uuid, NULLIF($4::text, '')::uuid, NULLIF($5::text, '')::uuid, $6, 'assigned', NOW(), NOW())
+          ON CONFLICT (video_id) DO UPDATE SET assigned_reviewer_id = EXCLUDED.assigned_reviewer_id, assigned_reviewer_name = EXCLUDED.assigned_reviewer_name, status = 'assigned', updated_at = NOW()
+        `, [ticketCode, video.id, video.candidate_id || null, video.vendor_id || null, assignedQC.id, assignedQC.full_name || 'QC Specialist']).catch((err) => {
+          logger.warn('Failed to insert qc_ticket in dispatchVideosToQC:', err.message);
+        });
+
+        await db.query(`UPDATE videos SET status = 'assigned_qc', updated_at = NOW() WHERE id::text = $1::text`, [video.id]).catch(() => {});
 
         dispatchedCount++;
       }

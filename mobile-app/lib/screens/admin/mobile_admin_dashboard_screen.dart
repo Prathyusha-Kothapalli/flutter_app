@@ -1903,7 +1903,7 @@ class _MobileAdminDashboardScreenState extends State<MobileAdminDashboardScreen>
   Widget _buildQCApprovedTab() {
     final approvedItems = _qcSubmissions.where((item) {
       final s = (item['status'] ?? '').toString().toLowerCase().replaceAll('_', ' ').trim();
-      return s == 'approved' || s == 'qc approved' || s == 'final approved' || s.contains('qc approved') || s.contains('approved');
+      return s == 'approved' || s == 'qc approved' || s == 'admin pending' || s == 'final approved' || s.contains('qc approved') || s.contains('approved') || s.contains('admin pending');
     }).toList();
 
     return Container(
@@ -1958,11 +1958,12 @@ class _MobileAdminDashboardScreenState extends State<MobileAdminDashboardScreen>
   }
 
   Widget _buildQCCard(Map<String, dynamic> item) {
-    final status = item['status'] ?? 'Pending QC';
-    final isQCApproved = status == 'QC Approved';
-    final isApproved = status == 'Approved' || status == 'Final Approved';
-    final isRejected = status == 'Rejected';
-    final isInReview = status == 'In Review';
+    final status = (item['status'] ?? 'Pending QC').toString().trim();
+    final rawStatus = status.toLowerCase().replaceAll('_', ' ');
+    final isQCApproved = status == 'QC Approved' || status == 'ADMIN_PENDING' || status == 'admin_pending' || rawStatus == 'admin pending' || rawStatus == 'qc approved';
+    final isApproved = status == 'Approved' || status == 'Final Approved' || status == 'FINAL_APPROVED' || rawStatus == 'final approved';
+    final isRejected = status == 'Rejected' || status == 'ADMIN_REJECTED' || rawStatus == 'admin rejected';
+    final isInReview = status == 'In Review' || status == 'IN_REVIEW' || rawStatus == 'in review';
 
     Color statusBg = const Color(0xFFFEF3C7);
     Color statusFg = const Color(0xFFD97706);
