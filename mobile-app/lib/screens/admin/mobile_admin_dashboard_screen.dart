@@ -1772,11 +1772,7 @@ class _MobileAdminDashboardScreenState extends State<MobileAdminDashboardScreen>
   Widget _buildQCQueueTab() {
     final pendingItems = _qcSubmissions.where((item) {
       final st = (item['status'] ?? 'PENDING_QC').toString().toUpperCase().replaceAll(' ', '_');
-      final assigned = item['assigned_reviewer_id'] ?? item['assignedTo'] ?? item['assigned_to'] ?? item['assigned_qc'];
-      final isUnassigned = assigned == null || assigned.toString().isEmpty || assigned.toString().toLowerCase().contains('unassigned');
-
-      // Display ONLY unassigned videos with PENDING_QC status waiting for Admin ticket assignment
-      return (st == 'PENDING_QC' || st == 'PENDING' || st == 'UNASSIGNED') && isUnassigned;
+      return st == 'PENDING_QC' || st == 'PENDING' || st == 'UNASSIGNED' || st == 'ASSIGNED_QC' || st == 'ASSIGNED' || st == 'IN_REVIEW';
     }).toList();
 
     return Container(
